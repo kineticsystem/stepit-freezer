@@ -35,7 +35,7 @@ StepIt Freezer is a project to fire cameras and flashes from ROS2, through the F
 - Talk to the Nano with a framed, CRC-checked protocol of one request and one response.
 
 > [!WARNING]
-> The project is being built. How it is built, and why, is in [ARCHITECTURE.md](docs/ARCHITECTURE.md); the ideas we weighed on the way are in [Brainstorming.md](Brainstorming.md). The firmware and the ROS2 side fire shots, tested on a Nano on its own; they have not yet driven cameras through the Freezer board.
+> The project is being built. How it is built, and why, is in [ARCHITECTURE.md](docs/ARCHITECTURE.md); the ideas we weighed on the way are in [Brainstorming.md](docs/design/Brainstorming.md). The firmware and the ROS2 side fire shots, tested on a Nano on its own; they have not yet driven cameras through the Freezer board.
 
 ## Prerequisites
 
@@ -110,7 +110,7 @@ pio run --target upload --upload-port /dev/ttyUSB0
 
 The project targets the board `nanoatmega328`, a Nano with the old bootloader, which listens at 57600 baud. A Nano with the newer Optiboot bootloader listens at 115200 baud: the upload then fails with `not in sync`, and the board in [`platformio.ini`](src/freezer_mcu/platformio.ini) must be `nanoatmega328new`.
 
-The Nano resets every time the port is opened, and the firmware answers only once the bootloader has given up waiting for an upload: about 0.65 s on our Nano. StepIt Freezer waits for it, see `connect_delay` in [Brainstorming.md](Brainstorming.md).
+The Nano resets every time the port is opened, and the firmware answers only once the bootloader has given up waiting for an upload: about 0.65 s on our Nano. StepIt Freezer waits for it, see `connect_delay` in [Brainstorming.md](docs/design/Brainstorming.md).
 
 Before the first upload to a Nano, save the firmware it already has, so that it can be written back. The folder `backup` is ignored by git: each machine keeps its own.
 
