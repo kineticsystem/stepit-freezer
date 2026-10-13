@@ -51,7 +51,7 @@
 
 StepIt Freezer lets ROS2 fire the Freezer board: up to 7 cameras and a flash, through the optocouplers driven by two 74HC595 shift registers on an Arduino Nano. It talks to the board with framed, CRC-checked request and response messages over the USB serial port.
 
-This document collects ideas, and the decisions taken so far are listed in [Decisions](#decisions). The ROS2 packages and the firmware in `src` implement them, and fire shots on a Nano. See the [README](README.md) to build and run them. It follows one rule that everything else must respect: **once a shot starts, its timing belongs to the controller and nothing interrupts it**. The host asks for a shot and is told straight away that it has started, then polls until the controller says it has ended.
+This document collects ideas, and the decisions taken so far are listed in [Decisions](#decisions). The ROS2 packages and the firmware in `src` implement them, and fire shots on a Nano. See the [README](../../README.md) to build and run them. It follows one rule that everything else must respect: **once a shot starts, its timing belongs to the controller and nothing interrupts it**. The host asks for a shot and is told straight away that it has started, then polls until the controller says it has ended.
 
 ## Decisions
 
@@ -80,7 +80,7 @@ The original sketch of the board fires a fixed sequence when input D7 goes high.
 The Arduino pins are D2 `MR`, D3 `SH_CP`, D4 `DS`, D5 `OE` and D6 `ST_CP`. The latch matters for timing: all 16 outputs change together on the rising edge of `ST_CP`, however long the 16 bits take to shift in. D8 and the J2 and J3 headers are free.
 
 > [!IMPORTANT]
-> The pin labels on [`docs/hardware/CircuitSchema.png`](docs/hardware/CircuitSchema.png) do not match the PCB. The PCB and `Freezer.h`, of the original sketch, agree, and they are the truth.
+> The pin labels on [`docs/hardware/CircuitSchema.png`](../hardware/CircuitSchema.png) do not match the PCB. The PCB and `Freezer.h`, of the original sketch, agree, and they are the truth.
 
 ### The Framed Protocol
 
