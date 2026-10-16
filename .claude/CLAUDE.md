@@ -48,7 +48,7 @@ Easy to break, see **Safety Nets** in the architecture document:
 For the `architect` and `reviewer` skills: what they cannot find out alone.
 
 - `docs/ARCHITECTURE.md` follows the rule above and describes firmware and protocol version 2.0.0. Its sections, in order: Introduction, The Big Picture, The Packages, The Board, The Protocol, The Controller, The Remote Trigger, The Host, A Shot from the Host, Stopping a Shot, Losing the Controller, Seeing the Board, Safety Nets, Tests, Design Decisions and Trade-offs.
-- **The review is the last section, Review, of `docs/ARCHITECTURE.md`**, opened with the date and the commit reviewed, as in every StepIt module; not a separate `docs/Review.md`. Say whether an issue is a safety issue for a camera or a light: an output left on, a shot cut short, a table fired that was not checked.
+- **The review is a separate document, `docs/Review.md`**, opened with the date and the commit reviewed; `docs/ARCHITECTURE.md` describes the design and holds no review. Say whether an issue is a safety issue for a camera or a light: an output left on, a shot cut short, a table fired that was not checked.
 - The safety nets, and what is deliberately not there, are design: judge them, do not report them as bugs. Do not review `serial`, which is third-party.
 - **Probes run in the container, never on the host.** A throwaway test is a gmock test in `src/freezer_driver/tests/`, added with `ament_add_gmock()` to its `CMakeLists.txt`, and run with `colcon test --packages-select freezer_driver --return-code-on-test-failure`; for the page, a vitest test in `web/tests/`. The firmware has no automated test: what depends on it is checked on a Nano, or marked "from reading".
 
