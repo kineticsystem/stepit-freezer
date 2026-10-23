@@ -28,19 +28,119 @@
 
 #include "Sequencer.h"
 
-#include <util/atomic.h>
+// Arduino Nano R4, RA4M1 at 48 MHz. GPT1, a 32-bit timer, counts PCLKD, 48
+// MHz, from 0 to 0xFFFFFFFF: one tick is 1/48 µs, and the counter wraps after
+// about 89 s, which unsigned arithmetic absorbs. Its compare match A marks the
+// end of each step. The core reserves GPT1 for the PWM of D3 and D11: the
+// board drives D3 as a plain pin and leaves D11 free.
+//
+// The shift registers are written through the port's set and reset registers,
+// not digitalWrite: the interrupt must shift 16 bits between two steps as short
+// as MIN_HOLD_US. The pins are those of main.cpp.
 
-// The shift registers are on port D, written directly: digitalWrite takes
-// about 4 µs a call, and the interrupt must shift 16 bits between two steps
-// as short as MIN_HOLD_US. The bits are those of the pins in main.cpp.
-constexpr uint8_t CLOCK_BIT = _BV(PD3);  // D3, SH_CP of the 74HC595.
-constexpr uint8_t DATA_BIT = _BV(PD4);   // D4, DS of the 74HC595.
-constexpr uint8_t LATCH_BIT = _BV(PD6);  // D6, ST_CP of the 74HC595.
+#include <FspTimer.h>
 
 namespace sequencer
 {
 namespace
 {
+constexpr uint32_t TICKS_PER_US = 48;
+
+// The shift registers are on port 1: D3 is P104, D4 is P103, D6 is P106.
+constexpr uint16_t CLOCK_BIT = 1U << 4;  // D3, SH_CP of the 74HC595.
+constexpr uint16_t DATA_BIT = 1U << 3;   // D4, DS of the 74HC595.
+constexpr uint16_t LATCH_BIT = 1U << 6;  // D6, ST_CP of the 74HC595.
+
+// The compare match outranks USB (12) and millis() (14): a host talking to
+// the controller must not delay a boundary.
+constexpr uint8_t MATCH_PRIORITY = 2;
+constexpr uint8_t TIMER_CHANNEL = 1;
+
+FspTimer timer;
+IRQn_Type matchIrq = FSP_INVALID_VECTOR;
+
+/** Disable interrupts for its scope, and restore them as they were. */
+class InterruptLock
+{
+public:
+  InterruptLock() : m_primask{ __get_PRIMASK() }
+  {
+    __disable_irq();
+  }
+  ~InterruptLock()
+  {
+    __set_PRIMASK(m_primask);
+  }
+
+private:
+  uint32_t m_primask;
+};
+
+inline void setBits(uint16_t bits)
+{
+  R_PORT1->POSR = bits;
+}
+
+inline void clearBits(uint16_t bits)
+{
+  R_PORT1->PORR = bits;
+}
+
+/** The time in ticks. */
+inline uint32_t ticksNow()
+{
+  return R_GPT1->GTCNT;
+}
+
+/** Arm the compare match for the given time. */
+inline void armMatch(uint32_t ticks)
+{
+  R_GPT1->GTCCR[0] = ticks;  // GTCCRA.
+}
+
+/** Drop a compare match that happened and has not been handled. */
+inline void clearMatch()
+{
+  R_GPT1->GTST_b.TCFA = 0;
+  R_BSP_IrqStatusClear(matchIrq);
+  NVIC_ClearPendingIRQ(matchIrq);
+}
+
+inline void enableMatch()
+{
+  NVIC_EnableIRQ(matchIrq);
+}
+
+inline void disableMatch()
+{
+  NVIC_DisableIRQ(matchIrq);
+}
+
+/** The compare-match interrupt. */
+void onMatch()
+{
+  clearMatch();
+  runDueBoundaries();
+}
+
+void initTimer()
+{
+  FspTimer::force_use_of_pwm_reserved_timer();
+  timer.begin(TIMER_MODE_PERIODIC, GPT_TIMER, TIMER_CHANNEL, 0xFFFFFFFF, 0, TIMER_SOURCE_DIV_1);
+  timer.setup_capture_a_irq(MATCH_PRIORITY, onMatch);
+  timer.open();
+  matchIrq = static_cast<const gpt_extended_cfg_t*>(timer.get_cfg()->p_extend)->capture_a_irq;
+  disableMatch();
+  // The full 32 bits, which FSP's period, one count short, does not give;
+  // and no buffer, which would copy GTCCRC over the target at each wrap.
+  R_GPT1->GTBER = 0;
+  R_GPT1->GTPR = 0xFFFFFFFF;
+  R_GPT1->GTPBR = 0xFFFFFFFF;
+  R_GPT1->GTCNT = 0;
+  clearMatch();
+  timer.start();
+}
+
 // The loaded table. Written only while not running, read by the interrupt.
 uint16_t outputs[MAX_STEPS];
 uint32_t holdTicks[MAX_STEPS];
@@ -53,7 +153,6 @@ volatile byte step = 0;
 volatile uint32_t startTicks = 0;
 volatile uint32_t targetTicks = 0;  // The end of the current step.
 volatile uint32_t worstLatenessTicks = 0;
-volatile uint16_t overflows = 0;  // The high word of the time, in ticks.
 uint16_t lastShotId = 0;
 
 /**
@@ -67,48 +166,30 @@ inline void shiftPattern(uint16_t value)
   {
     if (value & 1)
     {
-      PORTD |= DATA_BIT;
+      setBits(DATA_BIT);
     }
     else
     {
-      PORTD &= ~DATA_BIT;
+      clearBits(DATA_BIT);
     }
-    PORTD |= CLOCK_BIT;
-    PORTD &= ~CLOCK_BIT;
+    setBits(CLOCK_BIT);
+    clearBits(CLOCK_BIT);
     value >>= 1;
   }
-  PORTD &= ~DATA_BIT;
+  clearBits(DATA_BIT);
 }
 
 /** Copy the shifted pattern to the 16 outputs, all at once. */
 inline void latchPattern()
 {
-  PORTD |= LATCH_BIT;
-  PORTD &= ~LATCH_BIT;
+  setBits(LATCH_BIT);
+  clearBits(LATCH_BIT);
 }
 
-/**
- * The time in ticks of 0.5 µs, on 32 bits: it wraps after about 35 minutes.
- * Call with interrupts disabled. An overflow that has happened but whose
- * interrupt has not run yet is counted, from its pending flag.
- */
-inline uint32_t ticksNow()
-{
-  const uint16_t low = TCNT1;
-  uint16_t high = overflows;
-  if ((TIFR1 & _BV(TOV1)) && low < 0x8000)
-  {
-    high++;
-  }
-  return (static_cast<uint32_t>(high) << 16) | low;
-}
-
-/** Arm the compare-match interrupt for the end of the current step. */
+/** Arm the compare match for the end of the current step. */
 inline void schedule()
 {
-  // The match fires once per wrap of the counter; runDueBoundaries() ignores
-  // the matches that come before the target.
-  OCR1A = static_cast<uint16_t>(targetTicks);
+  armMatch(targetTicks);
 }
 }  // namespace
 
@@ -140,7 +221,7 @@ void runDueBoundaries()
     {
       // The end of the last step. Its pattern switched every output off.
       running = false;
-      TIMSK1 &= ~_BV(OCIE1A);
+      disableMatch();
       return;
     }
     latchPattern();
@@ -156,14 +237,7 @@ void runDueBoundaries()
 
 void init()
 {
-  ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
-  {
-    TCCR1A = 0;          // Normal mode, OC1A and OC1B disconnected.
-    TCCR1B = _BV(CS11);  // Prescaler 8: 0.5 µs a tick at 16 MHz.
-    TCNT1 = 0;
-    TIFR1 = _BV(TOV1) | _BV(OCF1A);
-    TIMSK1 = _BV(TOIE1);  // The compare match is enabled by start().
-  }
+  initTimer();
 }
 
 void load(const Step* steps, byte stepCount, uint32_t tableDurationUs)
@@ -171,7 +245,7 @@ void load(const Step* steps, byte stepCount, uint32_t tableDurationUs)
   for (byte i = 0; i < stepCount; i++)
   {
     outputs[i] = steps[i].outputs;
-    holdTicks[i] = steps[i].holdUs * 2;
+    holdTicks[i] = steps[i].holdUs * TICKS_PER_US;
   }
   count = stepCount;
   durationUs = tableDurationUs;
@@ -179,29 +253,35 @@ void load(const Step* steps, byte stepCount, uint32_t tableDurationUs)
 
 bool setOutputs(uint16_t pattern)
 {
-  ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
+  InterruptLock lock;
+  if (running)
   {
-    if (running)
-    {
-      return false;
-    }
-    shiftPattern(pattern);
-    latchPattern();
+    return false;
   }
+  shiftPattern(pattern);
+  latchPattern();
   return true;
 }
 
 void stop()
 {
-  ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
-  {
-    // The shift stage may hold the next pattern of the shot: zeros replace it.
-    running = false;
-    TIMSK1 &= ~_BV(OCIE1A);
-    TIFR1 = _BV(OCF1A);
-    shiftPattern(0);
-    latchPattern();
-  }
+  InterruptLock lock;
+  // The shift stage may hold the next pattern of the shot: zeros replace it.
+  running = false;
+  disableMatch();
+  clearMatch();
+  shiftPattern(0);
+  latchPattern();
+}
+
+void reset()
+{
+  stop();
+  InterruptLock lock;
+  count = 0;
+  durationUs = 0;
+  lastShotId = 0;
+  worstLatenessTicks = 0;
 }
 
 uint32_t duration()
@@ -212,52 +292,38 @@ uint32_t duration()
 uint16_t start()
 {
   lastShotId = lastShotId == 0xFFFF ? 1 : lastShotId + 1;
-  ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
+  InterruptLock lock;
+  shiftPattern(outputs[0]);
+  const uint32_t now = ticksNow();
+  latchPattern();
+  startTicks = now;
+  step = 0;
+  targetTicks = now + holdTicks[0];
+  worstLatenessTicks = 0;
+  running = true;
+  if (count > 1)
   {
-    shiftPattern(outputs[0]);
-    const uint32_t now = ticksNow();
-    latchPattern();
-    startTicks = now;
-    step = 0;
-    targetTicks = now + holdTicks[0];
-    worstLatenessTicks = 0;
-    running = true;
-    if (count > 1)
-    {
-      shiftPattern(outputs[1]);
-    }
-    TIFR1 = _BV(OCF1A);  // Drop a match that happened before this shot.
-    schedule();
-    TIMSK1 |= _BV(OCIE1A);
-    runDueBoundaries();  // The end of step 0 may already be due.
+    shiftPattern(outputs[1]);
   }
+  schedule();
+  clearMatch();  // Drop a match that happened before this shot.
+  enableMatch();
+  runDueBoundaries();  // The end of step 0 may already be due.
   return lastShotId;
 }
 
 Status status()
 {
   Status result;
-  ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
   {
+    InterruptLock lock;
     result.running = running;
     result.step = running ? step : 0;
-    result.elapsedUs = running ? (ticksNow() - startTicks) / 2 : 0;
-    result.worstLatenessUs = (worstLatenessTicks + 1) / 2;
+    result.elapsedUs = running ? (ticksNow() - startTicks) / TICKS_PER_US : 0;
+    result.worstLatenessUs = (worstLatenessTicks + TICKS_PER_US - 1) / TICKS_PER_US;
   }
   result.loaded = count > 0;
   result.lastShotId = lastShotId;
   return result;
 }
 }  // namespace sequencer
-
-using namespace sequencer;
-
-ISR(TIMER1_OVF_vect)
-{
-  overflows++;
-}
-
-ISR(TIMER1_COMPA_vect)
-{
-  runDueBoundaries();
-}

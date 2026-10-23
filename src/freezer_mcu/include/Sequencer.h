@@ -6,7 +6,7 @@
 // The sequencer runs a shot: a table of steps, each a pattern of the 16
 // outputs and how long to hold it.
 //
-// Timer1 keeps the time, at 0.5 µs a tick, and its compare-match interrupt
+// GPT1 keeps the time, at 1/48 µs a tick, and its compare-match interrupt
 // latches each pattern at its boundary. The pattern of the next step is
 // shifted into the 74HC595 during the current step, so that the interrupt only
 // pulses ST_CP and the 16 outputs change together at the boundary. Each
@@ -19,9 +19,10 @@
 namespace sequencer
 {
 constexpr byte MAX_STEPS = 16;
-// Handling a boundary, the latch and the shift of the next pattern, takes
-// about 27.5 µs: shorter steps fall behind, one after the other. 40 µs leaves
-// room for the serial interrupts of a status poll.
+// Handling a boundary, the latch and the shift of the next pattern, took about
+// 27.5 µs on the Nano 3, whose shorter steps fell behind, one after the other.
+// The Nano R4 is faster, but keeps the limit until it is measured there: the
+// host reads it at the handshake.
 constexpr unsigned long MIN_HOLD_US = 40;
 constexpr unsigned long MAX_DURATION_US = 10000000;
 
@@ -58,6 +59,10 @@ bool setOutputs(uint16_t outputs);
 
 // End the running shot, if any, where it is, and switch every output off.
 void stop();
+
+// Return to the state of power on: no shot, every output off, no table, and
+// no shot since power on.
+void reset();
 
 // The duration of the loaded table, in µs.
 uint32_t duration();

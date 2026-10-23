@@ -26,7 +26,7 @@
 
 ## Introduction
 
-StepIt Freezer is a project to fire cameras and flashes from ROS2, through the Freezer board: an Arduino Nano driving two 74HC595 shift registers and 16 optocouplers, wired to 8 output jacks and 1 input jack.
+StepIt Freezer is a project to fire cameras and flashes from ROS2, through the Freezer board: an Arduino Nano R4 driving two 74HC595 shift registers and 16 optocouplers, wired to 8 output jacks and 1 input jack.
 
 - Fire up to 7 cameras and a flash at the same time, with the timing of each step kept by a hardware timer of the Nano.
 - Load a sequence of steps once, each an output pattern and a hold time, and fire it with one short command, or with the remote trigger on IN1.
@@ -35,7 +35,7 @@ StepIt Freezer is a project to fire cameras and flashes from ROS2, through the F
 - Talk to the Nano with a framed, CRC-checked protocol of one request and one response.
 
 > [!WARNING]
-> The project is being built. How it is built, and why, is in [ARCHITECTURE.md](docs/ARCHITECTURE.md); the ideas we weighed on the way are in [Brainstorming.md](docs/design/Brainstorming.md). The firmware and the ROS2 side fire shots, tested on a Nano on its own; they have not yet driven cameras through the Freezer board.
+> The project is being built. How it is built, and why, is in [ARCHITECTURE.md](docs/ARCHITECTURE.md); the ideas we weighed on the way are in [Brainstorming.md](docs/design/Brainstorming.md). On a Nano R4, the firmware and the ROS2 side fire a camera and lights through the Freezer board of StepIt Macro.
 
 ## Prerequisites
 
@@ -44,8 +44,7 @@ To run StepIt Freezer, we need a computer with Ubuntu 24.04 and ROS2 Jazzy. Plea
 StepIt Freezer runs with a fake controller by default, so we do not need the board to try it. For a real application, we need the following hardware.
 
 - 1 x Freezer board, see its circuit, PCB and Gerber files in [docs/hardware](docs/hardware/README.md).
-- 1 x [Arduino Nano 3.0](https://docs.arduino.cc/hardware/nano/), with the FTDI FT232R USB chip.
-- 1 x USB cable, mini-B, that carries data, not only power.
+- 1 x [Arduino Nano R4](https://docs.arduino.cc/hardware/nano-r4/), and a USB-C cable that carries data, not only power. The board was designed for the Arduino Nano 3.0, whose footprint and 5 V pins the Nano R4 keeps. The firmware of the Nano 3 is at the tag [`nano3-2.0.0`](https://github.com/kineticsystem/stepit-freezer/tree/nano3-2.0.0).
 
 ## Install StepIt Freezer on the Microcontroller
 
@@ -59,19 +58,21 @@ Connect the Nano to the computer and check that Linux sees it. Run the following
 journalctl -kf
 ```
 
-A working connection prints the following lines; the port is the last word, usually `ttyUSB0`.
+A working connection prints the following lines; the port is the last word, usually `ttyACM0`.
 
 ```
-usb 1-9: New USB device found, idVendor=0403, idProduct=6001, bcdDevice= 6.00
-usb 1-9: Product: FT232R USB UART
-usb 1-9: FTDI USB Serial Device converter now attached to ttyUSB0
+usb 3-2: New USB device found, idVendor=2341, idProduct=0074, bcdDevice= 1.00
+usb 3-2: Product: Nano R4
+cdc_acm 3-2:1.0: ttyACM0: USB ACM device
 ```
+
+The name `ttyACM0` changes when another board of the same kind is plugged in, e.g. the Teensy of StepIt Motors. The links in `/dev/serial/by-id/` keep their name, from the serial number of the board, e.g. `/dev/serial/by-id/usb-Arduino_Nano_R4_35062A2239313437DE0133354B573372-if00`: give that one to `usb_port`.
 
 If nothing is printed at all, see [Troubleshooting](#troubleshooting).
 
 ### Access the Serial Port
 
-The port `/dev/ttyUSB0` belongs to the group `dialout`. To read and write it, without being root, you must add your user to that group:
+The port `/dev/ttyACM0` belongs to the group `dialout`. To read and write it, without being root, you must add your user to that group:
 
 ```
 sudo usermod -aG dialout $USER
@@ -80,19 +81,23 @@ sudo usermod -aG dialout $USER
 The new group applies after we log out and log in again. To use the port straight away in the current session, grant our user access to it. The grant lasts until the Nano is unplugged.
 
 ```
-sudo setfacl -m u:$USER:rw /dev/ttyUSB0
+sudo setfacl -m u:$USER:rw /dev/ttyACM0
 ```
 
-> [!IMPORTANT]
-> A Nano clone with a CH340 USB chip, `idVendor=1a86`, is taken by `brltty`, the service for braille displays: its port appears and disappears at once. If you do not use a braille display, remove it with `sudo apt remove brltty`. A Nano with an FTDI chip is not affected.
+The Nano R4 is programmed with DFU, by writing to its USB device in `/dev/bus/usb`, which a system without a desktop, e.g. a Raspberry Pi, leaves to root alone: the upload fails with `Cannot open DFU device 2341:0074 (LIBUSB_ERROR_ACCESS)`. You must then install the udev rule [`src/freezer_mcu/udev/60-arduino-nano-r4.rules`](src/freezer_mcu/udev/60-arduino-nano-r4.rules), which gives the device to the group `plugdev`:
 
-No udev rule is required: the Nano is programmed over its serial port, which the group `dialout` already covers.
+```
+sudo cp src/freezer_mcu/udev/60-arduino-nano-r4.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules && sudo udevadm trigger
+```
+
+A desktop grants the device to the user who is logged in, so a PC needs no rule.
 
 ### Flash the Firmware
 
 We develop the firmware with Visual Studio Code and the [PlatformIO](https://platformio.org) extension. Installing the Arduino IDE is not required.
 
-The firmware, version 2.0.0, answers `Info`, `Echo`, `LoadSequence`, `Shoot`, `Status`, `SetOutputs` and `Stop`, and fires the loaded sequence when IN1 is pressed, unless a shot is running or no sequence is loaded. Timer1 runs the shot: each step starts at its own time, within about 5 µs, measured on the Nano. A step must last at least 40 µs: shorter steps fall behind, one after the other. The driver refuses a firmware of another major version, e.g. 1.1.0: flash the firmware of the same workspace.
+The firmware, version 2.1.0, answers `Info`, `Echo`, `LoadSequence`, `Shoot`, `Status`, `SetOutputs` and `Stop`, and fires the loaded sequence when IN1 is pressed, unless a shot is running or no sequence is loaded. A hardware timer runs the shot: each step starts at its own time, within 2 to 3 µs, as measured. A step must last at least 40 µs, the limit of the Nano 3 the board had before, which the Nano R4 keeps until it is measured there. The driver refuses a firmware of another major version, e.g. 1.1.0: flash the firmware of the same workspace.
 
 To flash the microcontroller code into the Nano:
 
@@ -105,27 +110,21 @@ The same can be done from a terminal:
 
 ```
 cd src/freezer_mcu
-pio run --target upload --upload-port /dev/ttyUSB0
+pio run --target upload --upload-port /dev/ttyACM0
 ```
 
-The project targets the board `nanoatmega328`, a Nano with the old bootloader, which listens at 57600 baud. A Nano with the newer Optiboot bootloader listens at 115200 baud: the upload then fails with `not in sync`, and the board in [`platformio.ini`](src/freezer_mcu/platformio.ini) must be `nanoatmega328new`.
+PlatformIO opens the port at 1200 baud, which starts the bootloader of the Nano R4, then writes the firmware with `dfu-util`. The environment pins GCC 12.3, `toolchain-gccarmnoneeabi@~1.120301.0`, in [`platformio.ini`](src/freezer_mcu/platformio.ini): the platform's own GCC 7.2 has no build for the Raspberry Pi, where the upload otherwise fails with `UnknownPackageError: Could not find the package with 'platformio/toolchain-gccarmnoneeabi @ ~1.70201.0' requirements`.
 
-The Nano resets every time the port is opened, and the firmware answers only once the bootloader has given up waiting for an upload: about 0.65 s on our Nano. StepIt Freezer waits for it, see `connect_delay` in [Brainstorming.md](docs/design/Brainstorming.md).
-
-Before the first upload to a Nano, save the firmware it already has, so that it can be written back. The folder `backup` is ignored by git: each machine keeps its own.
+To install PlatformIO on a computer without VSCode, e.g. the Raspberry Pi of a rig, put it in a virtual environment of its own:
 
 ```
-mkdir -p backup
-avrdude -p atmega328p -c arduino -P /dev/ttyUSB0 -b 57600 -U flash:r:backup/nano-flash.hex:i -U eeprom:r:backup/nano-eeprom.hex:i
+python3 -m venv ~/.platformio/penv
+~/.platformio/penv/bin/pip install platformio
 ```
 
-To write it back:
+Then call `~/.platformio/penv/bin/pio` in place of `pio`.
 
-```
-avrdude -p atmega328p -c arduino -P /dev/ttyUSB0 -b 57600 -U flash:w:backup/nano-flash.hex:i -U eeprom:w:backup/nano-eeprom.hex:i
-```
-
-PlatformIO installs `avrdude` in `~/.platformio/packages/tool-avrdude`; call it from there, with `-C ~/.platformio/packages/tool-avrdude/avrdude.conf`, if it is not on the `PATH`.
+The Nano R4 does not reset when its port is opened: it talks over its own USB, and a reset would drop the port. The firmware starts again by itself instead, when the host opens the port, so that the host finds every output off, no table and no shot.
 
 ## Install StepIt Freezer on the Local Computer
 
@@ -177,7 +176,7 @@ Start the container with an interactive shell:
 ./docker/dock.sh stepit-freezer start
 ```
 
-The container is privileged and mounts `/dev`, so the Nano on `/dev/ttyUSB0` is reachable from inside it. The commands below assume you are inside the container.
+The container is privileged and mounts `/dev`, so the Nano on `/dev/ttyACM0` is reachable from inside it. The commands below assume you are inside the container.
 
 Install all required dependencies, including the packages of the board page.
 
@@ -275,10 +274,10 @@ ros2 topic echo /freezer/status --qos-durability transient_local
 To use the Freezer board, set the launch argument `use_fake`:
 
 ```
-ros2 launch freezer_node freezer.launch.py use_fake:=false usb_port:=/dev/ttyUSB0
+ros2 launch freezer_node freezer.launch.py use_fake:=false usb_port:=/dev/ttyACM0
 ```
 
-The result of a shot reports `worst_lateness_us`, the latest a step started after its time, as the controller measured it. Measured with firmware 1.1.0, whose Timer1 code 2.0.0 keeps, it is about 5 µs.
+The result of a shot reports `worst_lateness_us`, the latest a step started after its time, as the controller measured it: 2 to 3 µs.
 
 ### The Board Page
 
@@ -308,10 +307,10 @@ ros2 launch freezer_node freezer.launch.py params_file:=/path/to/robot.yaml
 | Parameter | Default | Description |
 |---|---|---|
 | `use_fake` | `true` | Use a fake controller instead of the board. |
-| `usb_port` | `/dev/ttyUSB0` | Serial port of the Nano. |
+| `usb_port` | `/dev/ttyACM0` | Serial port of the Nano. |
 | `baudrate` | `9600` | Speed of the serial port, the one of the firmware. |
 | `timeout` | `0.2` | Seconds to wait for one answer of the controller. |
-| `connect_delay` | `1.0` | Seconds to wait after opening the port: the Nano resets and its bootloader runs first. |
+| `connect_delay` | `0.0` | Seconds to wait after opening the port, for a controller that resets when the port opens. The Nano R4 does not. |
 | `reconnect_period` | `2.0` | Seconds between two tries to connect while there is no controller: a Nano missing at start, or unplugged, is connected once it is plugged in. 0 tries once, at start. |
 | `poll_period` | `0.01` | Seconds between two status queries during a shot. |
 | `end_margin` | `0.1` | Seconds after the duration of a shot before the node gives up on it. |
@@ -330,21 +329,13 @@ Each sequence has a `recipe` and the parameters of that recipe, in milliseconds.
 
 ## Troubleshooting
 
-**Nothing is printed when the Nano is plugged in, but its power LED is on.** The computer does not see the Nano at all: the USB data lines do not reach it. The cable may carry power only, which is common with mini-B cables, or the USB socket or the FT232 chip of the Nano is broken. A Nano mounted on the Freezer board can also take its power from the board, so its LED proves nothing about the USB side. Try a cable known to carry data, e.g. one used with a camera, plug it into a port of the computer and not a hub, and try the Nano on its own, off the board. If it still shows nothing, replace the Nano.
+**Nothing is printed when the Nano is plugged in, but its power LED is on.** The computer does not see the Nano at all: the USB data lines do not reach it. The cable may carry power only, or the USB socket of the Nano is broken. A Nano mounted on the Freezer board can also take its power from the board, so its LED proves nothing about the USB side. Try a cable known to carry data, e.g. one used with a camera, plug it into a port of the computer and not a hub, and try the Nano on its own, off the board. If it still shows nothing, replace the Nano.
+
+**The upload to a Nano R4 fails with `Cannot open DFU device 2341:0074 found on devnum 2 (LIBUSB_ERROR_ACCESS)`.** Our user cannot write the USB device of the Nano R4. Install its udev rule, see [Access the Serial Port](#access-the-serial-port).
 
 **Every shot is rejected, and the log says `Every shot is rejected until it answers` or `The Freezer controller stopped answering`.** The Nano is unplugged, or the computer did not see it, as a Raspberry Pi sometimes does at boot. Plug it in again: the node tries to connect every `reconnect_period`, 2 s, and logs `The Freezer controller is back`, with no restart. `/freezer/status` tells the error of the last try.
 
-**`Permission denied` when opening `/dev/ttyUSB0`.** Our user is not in the group `dialout`, or we have not logged in again since joining it. See [Access the Serial Port](#access-the-serial-port).
-
-**The port `/dev/ttyUSB0` appears and disappears at once.** The Nano is a clone with a CH340 chip and `brltty` takes it. See [Access the Serial Port](#access-the-serial-port).
-
-**The log shows `Connection failed: SerialException: timeout.` once, then `Connection established`.** The Nano was still running its bootloader when the first `Info` arrived. The driver tries 5 times, 100 ms apart, so one or two timeouts are normal. If all 5 fail, raise `connect_delay`.
-
-**Answers from the Nano arrive late, by up to 16 ms.** The FT232 holds received bytes until its latency timer expires, 16 ms by default. Lower it to 1 ms; it goes back to 16 ms when the Nano is plugged in again.
-
-```
-echo 1 | sudo tee /sys/bus/usb-serial/devices/ttyUSB0/latency_timer
-```
+**`Permission denied` when opening `/dev/ttyACM0`.** Our user is not in the group `dialout`, or we have not logged in again since joining it. See [Access the Serial Port](#access-the-serial-port).
 
 ## How to run GitHub Actions locally
 

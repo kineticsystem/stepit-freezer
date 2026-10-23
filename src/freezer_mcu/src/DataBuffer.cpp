@@ -58,11 +58,12 @@ byte DataBuffer::removeByte(BufferPosition location)
 }
 
 // Following IEEE 754 specifications a type int is always sent/received
-// with Most Significant Byte (MSB) first.
+// with Most Significant Byte (MSB) first. It is 2 bytes on the wire, an int16_t:
+// an int has 4 bytes on the Nano R4.
 // In Arduino a type int is stored in memory in Little Endian format,
 // it means a pointer to an int gives the address of the LSB.
 // [LSB][...][...][MSB].
-void DataBuffer::addInt(int in, BufferPosition location)
+void DataBuffer::addInt(int16_t in, BufferPosition location)
 {
   byte* pointer = (byte*)&in;
   if (location == BufferPosition::Tail)
@@ -82,9 +83,9 @@ void DataBuffer::addInt(int in, BufferPosition location)
 // In Arduino a type int is stored in memory in Little Endian format,
 // it means a pointer to an int gives the address of the LSB.
 // [LSB][...][...][MSB].
-int DataBuffer::removeInt(BufferPosition location)
+int16_t DataBuffer::removeInt(BufferPosition location)
 {
-  int ret;
+  int16_t ret;
   byte* pointer = (byte*)&ret;
   if (location == BufferPosition::Head)
   {

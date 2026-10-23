@@ -92,10 +92,10 @@ FreezerNode::FreezerNode(const rclcpp::NodeOptions& options, std::unique_ptr<fre
   : rclcpp::Node("freezer", options), driver_{ std::move(driver) }
 {
   declare_parameter<bool>("use_fake", true);
-  declare_parameter<std::string>("usb_port", "/dev/ttyUSB0");
+  declare_parameter<std::string>("usb_port", "/dev/ttyACM0");
   declare_parameter<int>("baudrate", 9600);
   declare_parameter<double>("timeout", 0.2);
-  declare_parameter<double>("connect_delay", 1.0);
+  declare_parameter<double>("connect_delay", 0.0);
   declare_parameter<double>("reconnect_period", 2.0);
   declare_parameter<double>("poll_period", 0.01);
   declare_parameter<double>("end_margin", 0.1);

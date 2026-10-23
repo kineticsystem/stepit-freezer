@@ -61,11 +61,11 @@ public:
   // Remove a byte from the given location.
   byte removeByte(BufferPosition location);
 
-  // Insert an int at the given location.
-  void addInt(int in, BufferPosition location);
+  // Insert an int (2 bytes) at the given location.
+  void addInt(int16_t in, BufferPosition location);
 
-  // Remove an int from the given location.
-  int removeInt(BufferPosition location);
+  // Remove an int (2 bytes) from the given location.
+  int16_t removeInt(BufferPosition location);
 
   // Insert a long (4 bytes) at the given location.
   void addLong(long in, BufferPosition location);

@@ -48,7 +48,7 @@ constexpr unsigned long TRIGGER_DEBOUNCE_MS = 20;
 constexpr char NAME[] = "FREEZER";
 
 constexpr byte VERSION_MAJOR = 2;
-constexpr byte VERSION_MINOR = 0;
+constexpr byte VERSION_MINOR = 1;
 constexpr byte VERSION_PATCH = 0;
 
 // Limits of a sequence, reported to the host at the handshake. The host is
@@ -369,6 +369,25 @@ void updateTrigger()
 }
 
 /**
+ * Start again as from power on when a host opens the port, i.e. when DTR
+ * rises: a host that opens the port finds every output off and no table, and
+ * the bytes meant for the host before it are dropped. A reset would do the
+ * same, but it would also drop the USB port the host has just opened.
+ */
+void updateHost()
+{
+  static bool connected = false;
+  const bool now = static_cast<bool>(Serial);
+  if (now && !connected)
+  {
+    sequencer::reset();
+    serialPort.reset();
+    responseBuffer.clear();
+  }
+  connected = now;
+}
+
+/**
  * Decode the input command and execute the requested action.
  * @param cmd The the command data.
  */
@@ -431,6 +450,7 @@ void setup()
 
 void loop()
 {
+  updateHost();
   serialPort.update();  // Read/write serial port data.
   updateTrigger();
 }
