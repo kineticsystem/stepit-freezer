@@ -66,6 +66,13 @@ void SerialPort::flush()
   Serial.flush();
 }
 
+void SerialPort::reset()
+{
+  m_readBuffer->clear();
+  m_writeBuffer->clear();
+  m_state = Waiting;
+}
+
 void SerialPort::addByte(DataBuffer* buffer, byte ch)
 {
   if (ch == ESCAPE_FLAG || ch == DELIMITER_FLAG)

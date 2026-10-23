@@ -88,8 +88,8 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "usb_port",
-                default_value="/dev/ttyUSB0",
-                description="Serial port of the Arduino Nano.",
+                default_value="/dev/ttyACM0",
+                description="Serial port of the Arduino Nano R4.",
             ),
             DeclareLaunchArgument(
                 "web",

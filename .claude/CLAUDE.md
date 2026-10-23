@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Repository Is
 
-StepIt Freezer fires cameras and flashes from ROS 2 (Jazzy) through the Freezer board: an Arduino Nano driving two 74HC595 shift registers and 16 optocouplers, wired to 8 output jacks and 1 input jack. The host loads a table of steps and fires it; the Nano runs it on a hardware timer. It runs with a fake controller by default. How it is built, and why: [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md); the ideas weighed on the way: [docs/design/Brainstorming.md](../docs/design/Brainstorming.md).
+StepIt Freezer fires cameras and flashes from ROS 2 (Jazzy) through the Freezer board: an Arduino Nano R4 driving two 74HC595 shift registers and 16 optocouplers, wired to 8 output jacks and 1 input jack. The host loads a table of steps and fires it; the Nano runs it on a hardware timer. It runs with a fake controller by default. How it is built, and why: [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md); the ideas weighed on the way: [docs/design/Brainstorming.md](../docs/design/Brainstorming.md).
 
 ## Working Environment
 
@@ -17,10 +17,10 @@ update      # rosdep install, and pnpm install in web/
 build       # colcon build, then the board page into web/dist
 test        # the page's typecheck + vitest, then colcon test + test-result
 ros2 launch freezer_node freezer.launch.py                                  # fake controller, board page, rosbridge
-ros2 launch freezer_node freezer.launch.py use_fake:=false usb_port:=/dev/ttyUSB0
+ros2 launch freezer_node freezer.launch.py use_fake:=false usb_port:=/dev/ttyACM0
 ```
 
-One test package: `colcon test --packages-select freezer_driver --return-code-on-test-failure`. The firmware is a PlatformIO project, `src/freezer_mcu`, not built by colcon: `pio run --target upload --upload-port /dev/ttyUSB0`. The submodules `serial` and `framed-serial` must be present: `git submodule update --init --recursive`.
+One test package: `colcon test --packages-select freezer_driver --return-code-on-test-failure`. The firmware is a PlatformIO project for the Nano R4, `src/freezer_mcu`, not built by colcon: `pio run --target upload --upload-port /dev/ttyACM0` flashes it over DFU, which needs the udev rule `src/freezer_mcu/udev/60-arduino-nano-r4.rules` on a host without a desktop. The Nano 3 the board had before is no longer supported; its firmware is at the tag `nano3-2.0.0`. The submodules `serial` and `framed-serial` must be present: `git submodule update --init --recursive`.
 
 ## Architecture
 
@@ -31,7 +31,7 @@ It follows one rule: **once a shot starts, its timing belongs to the controller,
 | `freezer_msgs` | The `Shoot` action, the messages and the `SetOutputs` service. No code. |
 | `freezer_driver` | The host side of the protocol, with **no ROS interface**: `Driver` and its implementations (`DefaultDriver`, `FakeDriver`, `SynchronizedDriver`), the sequence and its rules, the recipes, `ShotRunner`. Its tests are in its `tests` folder, with gmock. |
 | `freezer_node` | The node `freezer`, its parameters, its launch file (which also starts the board page and its rosbridge), and its test. |
-| `freezer_mcu` | The firmware of the Nano. |
+| `freezer_mcu` | The firmware of the Nano R4. |
 | `web` | The board page, React and TypeScript with Vite and pnpm, not a ROS package (`web/COLCON_IGNORE`). |
 | `modules/framed-serial`, `modules/serial` | The framed, CRC-checked protocol and the serial port. `framed-serial` is shared with StepIt Motors; a rig that builds both needs them at the same commit. |
 
@@ -42,12 +42,17 @@ Easy to break, see **Safety Nets** in the architecture document:
 - **The shot owns the outputs**: nothing changes them while it runs. A shot runs to its end; the host's cancel works only before it starts, and `Stop` is the one deliberate exception.
 - **The handshake** refuses the wrong device and a different major version of the firmware: a change to the protocol changes the version on both sides together.
 - **No watchdog, by design**: the outputs stay as set when the host goes silent.
+- **Opening the port starts the controller again**: every output off, no table, no shot ids. The Nano R4 does it in `updateHost()` when DTR rises, without a reset, which would drop its USB port.
+
+## Pull Request Notes
+
+Each pull request has a notes file in [docs/pr/](../docs/pr/README.md): what we discussed, what we chose, and why. One file per pull request, written while the branch is open. Keep them simple: short sentences, one idea per paragraph, and a Mermaid diagram when it explains faster than words.
 
 ## Architecture and Review Documents
 
 For the `architect` and `reviewer` skills: what they cannot find out alone.
 
-- `docs/ARCHITECTURE.md` follows the rule above and describes firmware and protocol version 2.0.0. Its sections, in order: Introduction, The Big Picture, The Packages, The Board, The Protocol, The Controller, The Remote Trigger, The Host, A Shot from the Host, Stopping a Shot, Losing the Controller, Seeing the Board, Safety Nets, Tests, Design Decisions and Trade-offs.
+- `docs/ARCHITECTURE.md` follows the rule above and describes firmware 2.1.0 and protocol version 2. Its sections, in order: Introduction, The Big Picture, The Packages, The Board, The Protocol, The Controller, The Remote Trigger, The Host, A Shot from the Host, Stopping a Shot, Losing the Controller, Seeing the Board, Safety Nets, Tests, Design Decisions and Trade-offs.
 - **The review is a separate document, `docs/Review.md`**, opened with the date and the commit reviewed; `docs/ARCHITECTURE.md` describes the design and holds no review. Say whether an issue is a safety issue for a camera or a light: an output left on, a shot cut short, a table fired that was not checked.
 - The safety nets, and what is deliberately not there, are design: judge them, do not report them as bugs. Do not review `serial`, which is third-party.
 - **Probes run in the container, never on the host.** A throwaway test is a gmock test in `src/freezer_driver/tests/`, added with `ament_add_gmock()` to its `CMakeLists.txt`, and run with `colcon test --packages-select freezer_driver --return-code-on-test-failure`; for the page, a vitest test in `web/tests/`. The firmware has no automated test: what depends on it is checked on a Nano, or marked "from reading".

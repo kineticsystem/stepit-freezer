@@ -109,8 +109,9 @@ bool DefaultDriver::connect()
 {
   framed_serial_->open();
 
-  // The Nano resets when the port opens, and its bootloader listens for an
-  // upload before the firmware starts: a frame sent meanwhile is lost.
+  // A controller that resets when the port opens, e.g. a Nano 3, answers only
+  // once its bootloader gives up waiting for an upload: a frame sent meanwhile
+  // is lost. The Nano R4 needs no wait.
   std::this_thread::sleep_for(connect_delay_);
 
   // Send an info query multiple times until an answer comes back, then

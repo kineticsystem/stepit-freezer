@@ -46,11 +46,11 @@ public:
   /**
    * @param framed_serial The framed serial connection to the controller.
    * @param connect_delay How long to wait after opening the port before the
-   * handshake: the Nano resets when the port opens, and its bootloader keeps
-   * the firmware from answering for a while.
+   * handshake, for a controller that resets when the port opens and answers
+   * only once its bootloader gives up. The Nano R4 does not: none by default.
    */
   explicit DefaultDriver(std::unique_ptr<framed_serial::FramedSerial> framed_serial,
-                         std::chrono::duration<double> connect_delay = std::chrono::seconds{ 1 });
+                         std::chrono::duration<double> connect_delay = std::chrono::seconds{ 0 });
 
   bool connect() override;
   void disconnect() override;

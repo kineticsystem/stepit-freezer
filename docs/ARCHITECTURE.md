@@ -13,7 +13,7 @@
 - [The Controller](#the-controller)
   - [States](#states)
   - [The Shot Owns the Outputs](#the-shot-owns-the-outputs)
-  - [Running a Shot on Timer1](#running-a-shot-on-timer1)
+  - [Running a Shot on a Hardware Timer](#running-a-shot-on-a-hardware-timer)
   - [What the Controller Rejects](#what-the-controller-rejects)
 - [The Remote Trigger](#the-remote-trigger)
 - [The Host](#the-host)
@@ -36,13 +36,13 @@
 
 ## Introduction
 
-This document explains how StepIt Freezer is built: the board, the protocol, the firmware of the Nano and the ROS2 side, what each part is responsible for, and why it is built that way. It describes the code as it is, firmware and protocol version 2.0.0. It assumes we have read the [README](../README.md). [Brainstorming.md](design/Brainstorming.md) keeps the ideas we weighed on the way, including the ones we dropped.
+This document explains how StepIt Freezer is built: the board, the protocol, the firmware of the Nano and the ROS2 side, what each part is responsible for, and why it is built that way. It describes the code as it is, firmware version 2.1.0 and protocol version 2. It assumes we have read the [README](../README.md). [Brainstorming.md](design/Brainstorming.md) keeps the ideas we weighed on the way, including the ones we dropped.
 
 It follows one rule: **once a shot starts, its timing belongs to the controller, and only a stop interrupts it**. The host loads a table of steps, asks for a shot and is told at once that it has started; the Nano walks the table on a hardware timer, whatever else happens on the serial port; the host polls until the controller says the shot has ended.
 
 ## The Big Picture
 
-The Freezer board is an Arduino Nano driving two 74HC595 shift registers, whose 16 outputs drive 16 optocouplers, wired to 8 output jacks. An optocoupler only closes a switch: cameras, flashes and lights are powered by their own circuits, and the board closes their remote release, their sync or their power switch. A ninth jack, IN1, takes a remote trigger.
+The Freezer board is an Arduino Nano driving two 74HC595 shift registers, whose 16 outputs drive 16 optocouplers, wired to 8 output jacks. The Nano is a Nano R4, a Renesas RA4M1 at 48 MHz with its own USB and 5 V pins. The board was designed for the Nano 3, whose footprint the R4 keeps; the firmware of the Nano 3 is at the tag `nano3-2.0.0`. An optocoupler only closes a switch: cameras, flashes and lights are powered by their own circuits, and the board closes their remote release, their sync or their power switch. A ninth jack, IN1, takes a remote trigger.
 
 ```mermaid
 ---
@@ -109,9 +109,9 @@ flowchart TB
         Runner --> Sync
         Sync --> Default["DefaultDriver"]
     end
-    Default <-- "USB serial, 9600 baud<br/>framed, CRC-16" --> Nano
+    Default <-- "USB serial<br/>framed, CRC-16" --> Nano
     subgraph Board["Freezer board"]
-        Nano["Arduino Nano<br/>Timer1 walks the table"] -- "shift, latch" --> Registers["2 x 74HC595<br/>16 outputs"]
+        Nano["Arduino Nano R4<br/>a timer walks the table"] -- "shift, latch" --> Registers["2 x 74HC595<br/>16 outputs"]
         Registers --> Opto["16 optocouplers"]
         Trigger["IN1"] --> Nano
     end
@@ -165,7 +165,7 @@ The latch is what makes a step precise: all 16 outputs change together on the ri
 
 ## The Protocol
 
-The host and the Nano speak the framed protocol of the `framed_serial` library: frames delimited by `0x7E`, escaped with `0x7D`, ending with a CRC-16, at 9600 baud. The first byte of a request is the command id; the first byte of a response is `0x11` for success or `0x12` for an error, followed by a reason. Numbers are most significant byte first. It is strictly one request, one response: the controller never speaks first, so a frame the host did not ask for can never be mistaken for the answer to its next request.
+The host and the Nano speak the framed protocol of the `framed_serial` library: frames delimited by `0x7E`, escaped with `0x7D`, ending with a CRC-16, over the USB serial port of the Nano R4, which ignores the baud rate the host sets. The first byte of a request is the command id; the first byte of a response is `0x11` for success or `0x12` for an error, followed by a reason. Numbers are most significant byte first. It is strictly one request, one response: the controller never speaks first, so a frame the host did not ask for can never be mistaken for the answer to its next request.
 
 ### Commands
 
@@ -207,7 +207,7 @@ The path of a serial port does not tell what is plugged in, so `DefaultDriver::c
 
 The driver accepts the controller only when the name is `FREEZER`, not another device on the wrong port, and its major version is the one the driver speaks, 2. The major version changes whenever the bytes on the wire change, so a driver never reads a controller it does not understand: flash the firmware of the same workspace. The node keeps the limits, and checks every table against them before sending it.
 
-**The Nano resets when the port opens.** The DTR line of its FT232 resets it, and its bootloader listens for an upload for about 0.65 s before the firmware starts, losing any frame sent meanwhile. The driver waits `connect_delay`, 1 s, after opening the port, then tries `Info` up to 5 times, 100 ms apart. The node keeps the port open as long as the controller answers, because every reopen restarts the controller, which forgets its table and switches its outputs off.
+**The controller starts again when the port opens.** The Nano R4 talks over its own USB, which a reset would drop, so its firmware starts again by itself when DTR rises: it stops a shot, switches every output off, forgets its table and its shot ids, and drops the bytes it had not sent, at once. The driver waits `connect_delay` after opening the port, 0 by default, for a controller that resets when the port opens, then tries `Info` up to 5 times, 100 ms apart. The node keeps the port open as long as the controller answers, because every reopen restarts the controller, which forgets its table and switches its outputs off.
 
 ## The Controller
 
@@ -216,10 +216,10 @@ The firmware, in `src/freezer_mcu`, is plain Arduino code with three parts:
 | File | Role |
 |---|---|
 | `main.cpp` | The pins, the commands, the checks of a table, and the remote trigger. `loop()` serves the serial port and reads IN1. |
-| `Sequencer.cpp` | The loaded table and the shot: Timer1, its interrupts, and the direct port writes to the shift registers. |
-| `SerialPort.cpp`, `DataBuffer.cpp`, `CrcUtils.cpp` | The framed protocol, the firmware side of `framed_serial`. |
+| `Sequencer.cpp` | The loaded table and the shot: GPT1, its compare-match interrupt, and the direct port writes to the shift registers. |
+| `SerialPort.cpp`, `DataBuffer.cpp`, `CrcUtils.cpp` | The framed protocol, the firmware side of `framed_serial`. A 2-byte number is an `int16_t`: an `int` has 4 bytes on the Nano R4. |
 
-It uses 857 of the 2048 bytes of RAM of the Nano.
+[`platformio.ini`](../src/freezer_mcu/platformio.ini) has one environment, `nano_r4`. The firmware uses about 3 KB of the 32 KB of RAM of the Nano R4.
 
 ### States
 
@@ -281,7 +281,7 @@ config:
 flowchart LR
     Boot(["Power on, reset,<br/>port opened"]) -- "outputs off" --> Empty["Idle, no table"]
     Empty -- "LoadSequence" --> Loaded["Idle, table loaded"]
-    Loaded -- "Shoot, IN1" --> Running["Running<br/>Timer1 owns the outputs"]
+    Loaded -- "Shoot, IN1" --> Running["Running<br/>the timer owns the outputs"]
     Running -- "end of the last step,<br/>Stop: outputs off" --> Loaded
 
     classDef default fill:#3b6fb6,stroke:#2c5590,color:#ffffff
@@ -302,11 +302,11 @@ The controller keeps no other state: there is no "armed" flag, no watchdog, and 
 
 ### The Shot Owns the Outputs
 
-Outside a shot, `SetOutputs` latches a pattern, e.g. lights on OUT8, `0xC000`, which stays until the next one. During a shot, the shot writes all 16 outputs, and nothing else may touch them: `SetOutputs` is answered busy, and only `Stop` ends the shot. A shot ends with every output off, lights included, because its last step must be `0x0000`; a host that wants the lights back sends `SetOutputs` again. A shot that needs light has the bits of the light in its steps, timed by Timer1 like the rest, as the `timed_light` recipe does.
+Outside a shot, `SetOutputs` latches a pattern, e.g. lights on OUT8, `0xC000`, which stays until the next one. During a shot, the shot writes all 16 outputs, and nothing else may touch them: `SetOutputs` is answered busy, and only `Stop` ends the shot. A shot ends with every output off, lights included, because its last step must be `0x0000`; a host that wants the lights back sends `SetOutputs` again. A shot that needs light has the bits of the light in its steps, timed by the timer like the rest, as the `timed_light` recipe does.
 
-### Running a Shot on Timer1
+### Running a Shot on a Hardware Timer
 
-Timer1, the 16-bit timer, counts ticks of 0.5 µs, at a prescaler of 8 on the 16 MHz Nano; its overflow interrupt extends it to 32 bits, which wrap after about 35 minutes. The compare-match interrupt fires at the end of each step:
+GPT1, a 32-bit timer, counts ticks of 1/48 µs, on PCLKD at 48 MHz, and wraps after about 89 s. Its compare-match interrupt fires at the end of each step. A wrap does not matter: the time of a boundary is compared with the current time as a signed difference, which stays right as long as the shot lasts less than half a wrap, and a shot lasts at most 10 s. The Arduino core of the Nano R4 reserves GPT1 for the PWM of D3 and D11; the board drives D3 as a plain pin and leaves D11 free, so the firmware takes it. Its compare match has priority 2, above USB, 12, and `millis()`, 14: the host talking to the controller does not delay a boundary.
 
 ```mermaid
 ---
@@ -378,12 +378,12 @@ flowchart TB
 ```
 
 - **Every step starts at its own time,** computed from the start of the shot, not from the end of the previous step: a late step does not delay the next ones.
-- **The interrupt only latches.** The next pattern is already in the shift stage, so the outputs change at the interrupt, within a few microseconds. Shifting the next pattern in, with direct port writes, takes the rest: about 27.5 µs per step in all, measured on the Nano. A step must therefore last at least 40 µs; shorter ones would fall behind, one after the other.
-- **The interrupt measures itself.** It records the worst lateness of the shot, how late a step boundary came after its time, which `Status` returns and the result of the action reports: about 5 µs on our Nano.
+- **The interrupt only latches.** The next pattern is already in the shift stage, so the outputs change at the interrupt, within a few microseconds. Shifting the next pattern in, with direct port writes, takes the rest. A step must last at least 40 µs: the Nano 3 the board had before took about 27.5 µs per step, and fell behind on shorter ones. The Nano R4 is faster, but keeps the limit until it is measured there.
+- **The interrupt measures itself.** It records the worst lateness of the shot, how late a step boundary came after its time, which `Status` returns and the result of the action reports: 2 to 3 µs on our Nano R4, 16 steps of 40 µs included.
 - **`loop()` stays free.** The serial port is served during the shot, which is what lets the host poll and stop it. The UART and `millis()` interrupts can delay a step by a few microseconds, which does not add up from step to step, and is three orders of magnitude below the shutter lag of a camera.
-- **Shared state is read atomically.** `Status` copies the state of the shot with interrupts disabled for a few microseconds, so that no 16- or 32-bit value is read half-updated on the 8-bit microcontroller.
+- **Shared state is read atomically.** `Status` copies the state of the shot with interrupts disabled for a few microseconds, so that no step and time of different moments are read together.
 
-A step that is due before its compare match could be armed, e.g. a very short one, is handled by checking the time again after arming it, instead of waiting for the counter to wrap, 32.8 ms later.
+A step that is due before its compare match could be armed, e.g. a very short one, is handled by checking the time again after arming it, instead of waiting for the counter to wrap, 89 s later.
 
 ### What the Controller Rejects
 
@@ -392,7 +392,7 @@ A generic table moves the responsibility for a safe shot from the firmware code 
 - **a last step that is not `0x0000`.** A camera must never be left with its shutter held, nor a light left on, by a shot.
 - **no step, or more than 16.**
 - **a type other than "set and hold".**
-- **a hold under 40 µs**, which Timer1 cannot keep.
+- **a hold under 40 µs**, see above.
 - **a hold, or a total, over 10 s.**
 - **a payload whose length does not match its step count.**
 
@@ -404,7 +404,7 @@ IN1 fires the loaded table, exactly as `Shoot` would, unless a shot is running o
 
 `loop()` reads IN1 at every turn. A button bounces when pressed and when released, so a level counts only once it has held for 20 ms, and only a press fires: holding the button fires once, and the bounces of the release, which come after the shot, fire nothing.
 
-After the port opens, the Nano has reset and holds no table, so IN1 does nothing until the node has loaded one, i.e. until its first shot.
+After the port opens, the controller has started again and holds no table, so IN1 does nothing until the node has loaded one, i.e. until its first shot.
 
 ## The Host
 
@@ -601,7 +601,7 @@ sequenceDiagram
         MCU-->>Node: duration
     end
     Node->>MCU: Shoot
-    Note over MCU: latch step 0, start Timer1
+    Note over MCU: latch step 0, arm the timer
     MCU-->>Node: shot id, duration
     Node-->>Client: feedback RUNNING, shot id
     loop every poll_period
@@ -614,7 +614,7 @@ sequenceDiagram
     Node-->>Client: result, shot id, timings
 ```
 
-The host learns the end of a shot late, by up to one polling period plus a status query, tens of milliseconds at 9600 baud, which is harmless when the cooldown alone is 200 ms. The controller, not the host's clock, decides when the shot has ended: the duration is only the host's deadline.
+The host learns the end of a shot late, by up to one polling period plus a status query, about 15 ms, which is harmless when the cooldown alone is 200 ms. The controller, not the host's clock, decides when the shot has ended: the duration is only the host's deadline.
 
 ## Stopping a Shot
 
@@ -628,14 +628,14 @@ A stop with no goal running only switches the outputs off. A goal sent after the
 
 ## Losing the Controller
 
-The Nano resets when its power or its USB connection drops, and when the port is opened again. It then forgets its table and its shot ids, and switches its outputs off. The host notices it in two places:
+The controller resets when its power or its USB connection drops, and starts again when the port is opened. It then forgets its table and its shot ids, and switches its outputs off. The host notices it in two places:
 
 - **`Shoot` answers "no table".** The runner forgets the table it loaded, loads it again, and fires once more. A second refusal aborts the goal.
 - **A shot disappears.** The controller reads idle with another shot id than the one `Shoot` returned: the runner aborts the goal, saying the controller may have reset, and forgets its table, so the next shot loads it again.
 
 A controller that never answers makes every call throw after `timeout`, and a shot that never ends aborts at its deadline.
 
-**A controller unplugged is let go, and connected again when it is back.** While no goal runs, three status queries of `watch()` that fail in a row, 0.6 s, close the port: a Nano unplugged makes them all fail, a single failure on noise does not. A shot running when it goes fails as above, and the next queries close the port. Then, as when the Nano is missing at start, a thread of the node tries to connect every `reconnect_period`, 2 s: opening the port fails at once while the Nano is away, and the handshake succeeds once it is back. The Nano resets when its port opens, so the node tells every output off, and `watch()` sees its shot ids start again. The first failure goes to the log, not every try that follows. The thread connects apart from the executor, because a handshake takes more than a second, `connect_delay` and the tries of `Info`, and the services must answer meanwhile. On a Raspberry Pi, where the Nano is sometimes not seen at boot, it is enough to plug it in again: nothing needs a restart. `reconnect_period` 0 tries once, at start, and never lets the controller go.
+**A controller unplugged is let go, and connected again when it is back.** While no goal runs, three status queries of `watch()` that fail in a row, 0.6 s, close the port: a Nano unplugged makes them all fail, a single failure on noise does not. A shot running when it goes fails as above, and the next queries close the port. Then, as when the Nano is missing at start, a thread of the node tries to connect every `reconnect_period`, 2 s: opening the port fails at once while the Nano is away, and the handshake succeeds once it is back. The controller starts again when its port opens, so the node tells every output off, and `watch()` sees its shot ids start again. The first failure goes to the log, not every try that follows. The thread connects apart from the executor, because a handshake can take up to half a second, `connect_delay` and the tries of `Info`, and the services must answer meanwhile. A Nano that was not seen, e.g. at boot, only needs to be plugged in again: nothing needs a restart. `reconnect_period` 0 tries once, at start, and never lets the controller go.
 
 ## Seeing the Board
 
@@ -750,7 +750,7 @@ The timing diagram is plain SVG: a row per line, high while it is closed, as a l
 
 What is deliberately not there:
 
-- **No watchdog.** The controller does not act when the host goes silent; it keeps its outputs: a shot ends by itself, and what `SetOutputs` set, a light or even a camera bit, stays until it is changed, stopped, or the Nano resets. A node that restarts opens the port, which resets the Nano and switches every output off.
+- **No watchdog.** The controller does not act when the host goes silent; it keeps its outputs: a shot ends by itself, and what `SetOutputs` set, a light or even a camera bit, stays until it is changed, stopped, or the controller resets. A node that restarts opens the port, which starts the controller again and switches every output off.
 - **No checksum of the table.** `Shoot` fires whatever table is loaded; the host knows what it loaded.
 
 ## Tests
@@ -768,11 +768,11 @@ The tests run without the board: `DefaultDriver` against a mock of `FramedSerial
 
 The board page has tests of its own, with vitest, run by `bin/test.sh` and by the `Web` workflow of CI: the bits of the board, the timeline of a shot, how the shot messages make the list of shots, and the rosbridge client against a fake WebSocket.
 
-The firmware has no automated test. The timing, the microseconds between latches, needs the board and a logic analyser or an oscilloscope on `ST_CP`; the rest, the commands, the states and IN1, is checked by hand on the Nano.
+The firmware has no automated test. The timing, the microseconds between latches, needs the board and a logic analyser or an oscilloscope on `ST_CP`; the rest, the commands, the states and IN1, is checked by hand on the Nano. On the Nano R4, a script checked every command and error, the minimum steps, `Stop`, the busy refusals, a 2 s shot against the clock of the Raspberry Pi, 2006 ms, and the restart when the port opens; the `timed_light` shot of StepIt Macro fired its camera and its lights.
 
 ## Design Decisions and Trade-offs
 
-**Timer1 runs the shot, not `delay()`.** The sketch the board came with chained `delay()` calls and `digitalWrite`s: each step changed a few hundred microseconds late, the error added up, and the controller was deaf for the whole shot. A compare-match interrupt that only latches a pattern shifted in ahead keeps every step within a few microseconds of its time, and leaves `loop()` free to answer the host. Disabling interrupts for the whole shot would make the timing perfect, but the controller could then neither answer nor stop, and a few microseconds of jitter are far below the jitter of a camera.
+**A hardware timer runs the shot, not `delay()`.** The sketch the board came with chained `delay()` calls and `digitalWrite`s: each step changed a few hundred microseconds late, the error added up, and the controller was deaf for the whole shot. A compare-match interrupt that only latches a pattern shifted in ahead keeps every step within a few microseconds of its time, and leaves `loop()` free to answer the host. Disabling interrupts for the whole shot would make the timing perfect, but the controller could then neither answer nor stop, and a few microseconds of jitter are far below the jitter of a camera.
 
 **The table is loaded, then fired.** A shot could carry its table, and since what matters is how precisely a shot runs, not how soon it starts, the few milliseconds of a bigger frame would not matter. We kept the load for IN1: a button has no table to send, so the controller must hold the one it fires. The loaded table is therefore the shot, whoever fires it, the host or the button. Loading once also means that a focus stack of 200 shots sends its table once.
 
@@ -786,7 +786,7 @@ The firmware has no automated test. The timing, the microseconds between latches
 
 **No checksum.** Version 1 had `LoadSequence` return the CRC-16 of the table, and `Shoot` send it back, so that the controller refused to fire a table the host did not mean. One host owns the port, so it only guarded against that host's own mistakes, which the runner avoids by remembering what it loaded. The CRC-16 of every frame, which checks the link, stays.
 
-**No watchdog.** A watchdog matters where something left running is dangerous, e.g. a motor. Here a shot ends by itself, and outputs left on outside a shot are a choice of the host, which a restart of the node clears, since opening the port resets the Nano.
+**No watchdog.** A watchdog matters where something left running is dangerous, e.g. a motor. Here a shot ends by itself, and outputs left on outside a shot are a choice of the host, which a restart of the node clears, since opening the port starts the controller again.
 
 **IN1 stays simple.** It is for testing: arming it, disabling it while the host is connected or reporting its shots to the host would all be state to keep in step for a button. It fires the loaded table unless a shot runs, and the only thing it needs is a debounce, because a single press must fire a single shot.
 
@@ -798,4 +798,8 @@ The firmware has no automated test. The timing, the microseconds between latches
 
 **The node polls for the trigger, rather than the controller telling it.** The controller stays strictly request and response, and IN1 stays simple. A status query every 200 ms while idle costs little, and only matters for showing the trigger's shots.
 
-**The Nano, at 9600 baud.** The board is designed for the footprint of the Nano, and its 2 KB of RAM are enough: the firmware uses 857 bytes. At 9600 baud, an `Info` round trip takes about 48 ms, and a status query tens of milliseconds, so the host polls a little slower than `poll_period` asks and learns the end of a shot a little later; the timing of the shot itself does not depend on the serial port at all.
+**The Nano R4, over its own USB.** The board is designed for the footprint of the Nano. The Nano R4 talks USB at full speed, whatever the baud rate the host sets: an `Info` round trip takes 7 ms, a status query 5 ms, where the Nano 3 at 9600 baud took about 48 ms and tens of milliseconds. The timing of the shot itself does not depend on the serial port at all.
+
+**The Nano R4 starts again when the port opens, without a reset.** The host relies on a fresh controller after it opens the port: no table, no shot ids, every output off. The FT232 of the Nano 3 gave it for free. On the Nano R4, a real reset, `NVIC_SystemReset()`, would drop the USB port under the host, which would then lose its open port; so the firmware returns to the state of power on by itself when DTR rises. The price: a program that opens the port, e.g. `screen`, also stops a shot and forgets the table, as it did on the Nano 3.
+
+**The Nano R4 only.** The R4 replaced the Nano 3 on the board. Keeping both would have cost a second timer, lock and port layer, a second board to flash for every change, with no Nano 3 left to test it on, and the Nano 3's defaults on the R4: the 1 s wait at each connection, and a port, `/dev/ttyUSB0`, that the R4 does not have. The firmware of the Nano 3 stays at the tag `nano3-2.0.0`, which the driver still accepts. The environment pins GCC 12.3, because the platform's own GCC 7.2 has no build for the Raspberry Pi, which flashes the rig's board.

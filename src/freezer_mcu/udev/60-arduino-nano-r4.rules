@@ -1,0 +1,12 @@
+# The Arduino Nano R4 of the Freezer board, for the computer that flashes it.
+# Install it with:
+#
+#   sudo cp src/freezer_mcu/udev/60-arduino-nano-r4.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules && sudo udevadm trigger
+#
+# PlatformIO flashes the Nano R4 with dfu-util, which writes to its USB device,
+# /dev/bus/usb/..., left writable by root alone on a system without a desktop,
+# e.g. the Raspberry Pi of the rig. The serial port, /dev/ttyACM0, needs no
+# rule: it belongs to the group dialout. This rule gives the device to the group
+# plugdev, both as the firmware runs (0074) and in its bootloader (0374).
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="0074|0374", GROUP="plugdev", MODE="0664"

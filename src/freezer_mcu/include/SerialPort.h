@@ -69,6 +69,9 @@ public:
   /** Write the data buffer. */
   void flush();
 
+  /** Drop a frame half read and the bytes not written yet. */
+  void reset();
+
 private:
   // This is the CRC-16 calculated on incoming data.
   unsigned short crc;

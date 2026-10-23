@@ -3,10 +3,10 @@
 freezer:
   ros__parameters:
     use_fake: true
-    usb_port: /dev/ttyUSB0
+    usb_port: /dev/ttyACM0
     baudrate: 9600
     timeout: 0.2          # s, for one answer
-    connect_delay: 1.0    # s, the Nano resets when the port opens
+    connect_delay: 0.0    # s, before the handshake: the Nano R4 does not reset when the port opens
     reconnect_period: 2.0 # s, between tries while there is no controller; 0 tries once
     poll_period: 0.01     # s
     end_margin: 0.1       # s, after the duration, before giving up
