@@ -1,0 +1,89 @@
+---
+config:
+  theme: base
+  fontFamily: "Arial, Helvetica, sans-serif"
+  flowchart:
+    curve: basis
+    padding: 12
+    nodeSpacing: 46
+    rankSpacing: 32
+    subGraphTitleMargin:
+      top: 4
+      bottom: 10
+  class:
+    padding: 10
+  themeVariables:
+    lineColor: "#94a3b8"
+    textColor: "#64748b"
+    primaryColor: "#f1f5f9"
+    primaryBorderColor: "#64748b"
+    primaryTextColor: "#0f172a"
+    secondaryColor: "#f1f5f9"
+    secondaryBorderColor: "#64748b"
+    secondaryTextColor: "#0f172a"
+    tertiaryColor: "#f1f5f9"
+    tertiaryBorderColor: "#64748b"
+    tertiaryTextColor: "#0f172a"
+    mainBkg: "#f1f5f9"
+    nodeBorder: "#64748b"
+    nodeTextColor: "#0f172a"
+    classText: "#0f172a"
+    clusterBkg: "transparent"
+    clusterBorder: "#94a3b8"
+    titleColor: "#64748b"
+    edgeLabelBackground: "#ffffff"
+  themeCSS: >
+    svg, .label, .nodeLabel, .edgeLabel, foreignObject div { font-family: Arial, Helvetica, sans-serif; }
+    .node rect, .node polygon, .node path {
+      filter: drop-shadow(0 3px 6px rgba(15, 23, 42, 0.18));
+    }
+    .node rect { rx: 14px; ry: 14px; }
+    .cluster rect { rx: 18px; ry: 18px; }
+    .edgeLabel, .edgeLabel p, .edgeLabel span {
+      background: #ffffff; color: #475569; border-radius: 999px;
+    }
+    .edgeLabel p { padding: 3px 10px; }
+    .labelBkg { background: transparent !important; fill: none !important; }
+---
+flowchart TB
+    Shoot(["<b>Shoot or IN1</b>"])
+    First("<b>Shift in step 0, latch it</b><br/>shift in step 1")
+    Arm("<b>Set the compare match</b><br/>for the end of step 0")
+    ISR{{"<b>Compare-match interrupt</b>"}}
+    Due("Is the end of<br/>the step due?")
+    Wait("<b>Wait for the next match</b>")
+    Last("Last step?")
+    Latch("<b>Latch the shifted pattern</b><br/>record the lateness")
+    Next("<b>Shift in the pattern after it</b><br/>set the next compare value")
+    Done("<b>Stop the interrupt, idle</b><br/>the last step switched every output off")
+
+    Shoot --> First
+    First --> Arm
+    Arm --> ISR
+    ISR --> Due
+    Due -- "no, a match of<br/>an earlier wrap" --> Wait
+    Wait -.-> ISR
+    Due -- "yes" --> Last
+    Last -- "no" --> Latch
+    Latch ==> Next
+    Next -.-> Due
+    Last -- "yes" --> Done
+
+    classDef human fill:#ffe4e6,stroke:#e11d48,stroke-width:2px,color:#881337
+    classDef voice fill:#ccfbf1,stroke:#0d9488,stroke-width:2px,color:#134e4a
+    classDef mind  fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#4c1d95
+    classDef brain fill:#7c3aed,stroke:#5b21b6,stroke-width:2px,color:#ffffff
+    classDef robot fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f
+    classDef data  fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e3a8a
+    classDef ext   fill:#f1f5f9,stroke:#64748b,stroke-width:2px,color:#0f172a
+
+    class Shoot human
+    class First,Arm,Latch,Next robot
+    class ISR brain
+    class Due,Last mind
+    class Wait,Done ext
+
+    linkStyle 0,1,2,3,6,7,10 stroke:#8b5cf6,stroke-width:2px
+    linkStyle 4,5 stroke:#94a3b8,stroke-width:2px
+    linkStyle 8 stroke:#f59e0b,stroke-width:3px
+    linkStyle 9 stroke:#f59e0b,stroke-width:2px

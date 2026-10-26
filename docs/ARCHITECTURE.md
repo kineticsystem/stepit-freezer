@@ -44,83 +44,8 @@ It follows one rule: **once a shot starts, its timing belongs to the controller,
 
 The Freezer board is an Arduino Nano driving two 74HC595 shift registers, whose 16 outputs drive 16 optocouplers, wired to 8 output jacks. The Nano is a Nano R4, a Renesas RA4M1 at 48 MHz with its own USB and 5 V pins. The board was designed for the Nano 3, whose footprint the R4 keeps; the firmware of the Nano 3 is at the tag `nano3-2.0.0`. An optocoupler only closes a switch: cameras, flashes and lights are powered by their own circuits, and the board closes their remote release, their sync or their power switch. A ninth jack, IN1, takes a remote trigger.
 
-```mermaid
----
-config:
-  theme: base
-  themeCSS: ".edgeLabel p { padding: 4px 10px; }"
-  flowchart:
-    padding: 20
-    nodeSpacing: 40
-    rankSpacing: 50
-  class:
-    padding: 16
-  sequence:
-    boxMargin: 12
-    boxTextMargin: 8
-    noteMargin: 28
-    messageMargin: 40
-    actorMargin: 60
-    labelBoxWidth: 56
-    labelBoxHeight: 28
-  themeVariables:
-    primaryColor: "#3b6fb6"
-    primaryTextColor: "#ffffff"
-    primaryBorderColor: "#2c5590"
-    lineColor: "#8b949e"
-    textColor: "#4d86d6"
-    actorBkg: "#3b6fb6"
-    actorBorder: "#2c5590"
-    actorTextColor: "#ffffff"
-    actorLineColor: "#8b949e"
-    signalColor: "#8b949e"
-    signalTextColor: "#4d86d6"
-    noteBkgColor: "#3b6fb6"
-    noteTextColor: "#ffffff"
-    noteBorderColor: "#2c5590"
-    secondaryColor: "#3b6fb6"
-    tertiaryColor: "#3b6fb6"
-    clusterBkg: "transparent"
-    clusterBorder: "#8b949e"
-    titleColor: "#4d86d6"
-    edgeLabelBackground: "#3b6fb6"
-    classText: "#ffffff"
-    labelBoxBkgColor: "#3b6fb6"
-    labelBoxBorderColor: "#2c5590"
-    labelTextColor: "#ffffff"
-    loopTextColor: "#4d86d6"
-    mainBkg: "#3b6fb6"
-    nodeBorder: "#2c5590"
-    nodeTextColor: "#ffffff"
-    secondaryBorderColor: "#2c5590"
-    secondaryTextColor: "#ffffff"
-    tertiaryBorderColor: "#2c5590"
-    tertiaryTextColor: "#ffffff"
-    errorBkgColor: "#3b6fb6"
-    errorTextColor: "#ffffff"
----
-flowchart TB
-    Client["Clients<br/>a focus stacking sequence, ros2 CLI"] <-- "Shoot action<br/>set_outputs, stop" --> Node
-    Page["Board page<br/>in a browser"] <-- "WebSocket, JSON" --> Bridge["rosbridge<br/>port 9092"]
-    Bridge <-- "shots<br/>the commands" --> Node
-    subgraph Host["freezer_node"]
-        Node["FreezerNode"] --> Runner["ShotRunner<br/>its own thread"]
-        Node --> Sync["SynchronizedDriver"]
-        Runner --> Sync
-        Sync --> Default["DefaultDriver"]
-    end
-    Default <-- "USB serial<br/>framed, CRC-16" --> Nano
-    subgraph Board["Freezer board"]
-        Nano["Arduino Nano R4<br/>a timer walks the table"] -- "shift, latch" --> Registers["2 x 74HC595<br/>16 outputs"]
-        Registers --> Opto["16 optocouplers"]
-        Trigger["IN1"] --> Nano
-    end
-    Opto --> Jacks["OUT1 to OUT8"]
-    Jacks --> Devices["cameras, flashes, lights<br/>powered externally"]
-    Button["Remote trigger"] --> Trigger
-
-    classDef default fill:#3b6fb6,stroke:#2c5590,color:#ffffff
-```
+<!-- The source is diagrams/big-picture.mmd: change it, then run bin/render-diagrams.sh. -->
+<p align="center"><img src="diagrams/big-picture.svg" alt="Clients call FreezerNode through the Shoot action and the services, and the board page through rosbridge; inside the host, FreezerNode and its ShotRunner use the SynchronizedDriver, which wraps the DefaultDriver; the DefaultDriver talks to the Arduino Nano R4 of the board over USB serial; the Nano drives two shift registers, the optocouplers and the jacks OUT1 to OUT8, which switch cameras, flashes and lights, and a remote trigger on IN1 starts a shot." width="900"></p>
 
 The node's interface:
 
@@ -223,69 +148,8 @@ The firmware, in `src/freezer_mcu`, is plain Arduino code with three parts:
 
 ### States
 
-```mermaid
----
-config:
-  theme: base
-  themeCSS: ".edgeLabel p { padding: 4px 10px; }"
-  flowchart:
-    padding: 20
-    nodeSpacing: 40
-    rankSpacing: 50
-  class:
-    padding: 16
-  sequence:
-    boxMargin: 12
-    boxTextMargin: 8
-    noteMargin: 28
-    messageMargin: 40
-    actorMargin: 60
-    labelBoxWidth: 56
-    labelBoxHeight: 28
-  themeVariables:
-    primaryColor: "#3b6fb6"
-    primaryTextColor: "#ffffff"
-    primaryBorderColor: "#2c5590"
-    lineColor: "#8b949e"
-    textColor: "#4d86d6"
-    actorBkg: "#3b6fb6"
-    actorBorder: "#2c5590"
-    actorTextColor: "#ffffff"
-    actorLineColor: "#8b949e"
-    signalColor: "#8b949e"
-    signalTextColor: "#4d86d6"
-    noteBkgColor: "#3b6fb6"
-    noteTextColor: "#ffffff"
-    noteBorderColor: "#2c5590"
-    secondaryColor: "#3b6fb6"
-    tertiaryColor: "#3b6fb6"
-    clusterBkg: "transparent"
-    clusterBorder: "#8b949e"
-    titleColor: "#4d86d6"
-    edgeLabelBackground: "#3b6fb6"
-    classText: "#ffffff"
-    labelBoxBkgColor: "#3b6fb6"
-    labelBoxBorderColor: "#2c5590"
-    labelTextColor: "#ffffff"
-    loopTextColor: "#4d86d6"
-    mainBkg: "#3b6fb6"
-    nodeBorder: "#2c5590"
-    nodeTextColor: "#ffffff"
-    secondaryBorderColor: "#2c5590"
-    secondaryTextColor: "#ffffff"
-    tertiaryBorderColor: "#2c5590"
-    tertiaryTextColor: "#ffffff"
-    errorBkgColor: "#3b6fb6"
-    errorTextColor: "#ffffff"
----
-flowchart LR
-    Boot(["Power on, reset,<br/>port opened"]) -- "outputs off" --> Empty["Idle, no table"]
-    Empty -- "LoadSequence" --> Loaded["Idle, table loaded"]
-    Loaded -- "Shoot, IN1" --> Running["Running<br/>the timer owns the outputs"]
-    Running -- "end of the last step,<br/>Stop: outputs off" --> Loaded
-
-    classDef default fill:#3b6fb6,stroke:#2c5590,color:#ffffff
-```
+<!-- The source is diagrams/controller-states.mmd: change it, then run bin/render-diagrams.sh. -->
+<p align="center"><img src="diagrams/controller-states.svg" alt="The states of the controller: after power on, a reset or the opening of the port it is idle with no table; LoadSequence loads one; Shoot or IN1 runs it, with the timer owning the outputs, until the last step ends or Stop switches the outputs off." width="291"></p>
 
 `SetOutputs`, `Stop` and another `LoadSequence` leave an idle controller in its state. What each command gets, by state:
 
@@ -308,74 +172,8 @@ Outside a shot, `SetOutputs` latches a pattern, e.g. lights on OUT8, `0xC000`, w
 
 GPT1, a 32-bit timer, counts ticks of 1/48 µs, on PCLKD at 48 MHz, and wraps after about 89 s. Its compare-match interrupt fires at the end of each step. A wrap does not matter: the time of a boundary is compared with the current time as a signed difference, which stays right as long as the shot lasts less than half a wrap, and a shot lasts at most 10 s. The Arduino core of the Nano R4 reserves GPT1 for the PWM of D3 and D11; the board drives D3 as a plain pin and leaves D11 free, so the firmware takes it. Its compare match has priority 2, above USB, 12, and `millis()`, 14: the host talking to the controller does not delay a boundary.
 
-```mermaid
----
-config:
-  theme: base
-  themeCSS: ".edgeLabel p { padding: 4px 10px; }"
-  flowchart:
-    padding: 20
-    nodeSpacing: 40
-    rankSpacing: 50
-  class:
-    padding: 16
-  sequence:
-    boxMargin: 12
-    boxTextMargin: 8
-    noteMargin: 28
-    messageMargin: 40
-    actorMargin: 60
-    labelBoxWidth: 56
-    labelBoxHeight: 28
-  themeVariables:
-    primaryColor: "#3b6fb6"
-    primaryTextColor: "#ffffff"
-    primaryBorderColor: "#2c5590"
-    lineColor: "#8b949e"
-    textColor: "#4d86d6"
-    actorBkg: "#3b6fb6"
-    actorBorder: "#2c5590"
-    actorTextColor: "#ffffff"
-    actorLineColor: "#8b949e"
-    signalColor: "#8b949e"
-    signalTextColor: "#4d86d6"
-    noteBkgColor: "#3b6fb6"
-    noteTextColor: "#ffffff"
-    noteBorderColor: "#2c5590"
-    secondaryColor: "#3b6fb6"
-    tertiaryColor: "#3b6fb6"
-    clusterBkg: "transparent"
-    clusterBorder: "#8b949e"
-    titleColor: "#4d86d6"
-    edgeLabelBackground: "#3b6fb6"
-    classText: "#ffffff"
-    labelBoxBkgColor: "#3b6fb6"
-    labelBoxBorderColor: "#2c5590"
-    labelTextColor: "#ffffff"
-    loopTextColor: "#4d86d6"
-    mainBkg: "#3b6fb6"
-    nodeBorder: "#2c5590"
-    nodeTextColor: "#ffffff"
-    secondaryBorderColor: "#2c5590"
-    secondaryTextColor: "#ffffff"
-    tertiaryBorderColor: "#2c5590"
-    tertiaryTextColor: "#ffffff"
-    errorBkgColor: "#3b6fb6"
-    errorTextColor: "#ffffff"
----
-flowchart TB
-    Shoot["Shoot or IN1"] --> First["Shift in step 0, latch it<br/>shift in step 1"]
-    First --> Arm["Set the compare match<br/>for the end of step 0"]
-    Arm --> ISR["Compare-match interrupt"]
-    ISR --> Due{"Is the end of<br/>the step due?"}
-    Due -- "no, a match of<br/>an earlier wrap" --> Wait["Wait for the next match"] --> ISR
-    Due -- yes --> Last{"Last step?"}
-    Last -- no --> Latch["Latch the shifted pattern<br/>record the lateness"]
-    Latch --> Next["Shift in the pattern after it<br/>set the next compare value"] --> Due
-    Last -- yes --> Done["Stop the interrupt, idle<br/>the last step switched every output off"]
-
-    classDef default fill:#3b6fb6,stroke:#2c5590,color:#ffffff
-```
+<!-- The source is diagrams/timer-shot.mmd: change it, then run bin/render-diagrams.sh. -->
+<p align="center"><img src="diagrams/timer-shot.svg" alt="A shot on a hardware timer: the controller latches step 0, shifts in step 1 and sets the compare match; at each compare-match interrupt it checks whether the step is due, waits for the next match if not, latches the shifted pattern and shifts in the next one if it is, and stops the interrupt after the last step." width="785"></p>
 
 - **Every step starts at its own time,** computed from the start of the shot, not from the end of the previous step: a late step does not delay the next ones.
 - **The interrupt only latches.** The next pattern is already in the shift stage, so the outputs change at the interrupt, within a few microseconds. Shifting the next pattern in, with direct port writes, takes the rest. A step must last at least 40 µs: the Nano 3 the board had before took about 27.5 µs per step, and fell behind on shorter ones. The Nano R4 is faster, but keeps the limit until it is measured there.
@@ -408,82 +206,8 @@ After the port opens, the controller has started again and holds no table, so IN
 
 ## The Host
 
-```mermaid
----
-config:
-  theme: base
-  themeCSS: ".edgeLabel p { padding: 4px 10px; }"
-  flowchart:
-    padding: 20
-    nodeSpacing: 40
-    rankSpacing: 50
-  class:
-    padding: 16
-  sequence:
-    boxMargin: 12
-    boxTextMargin: 8
-    noteMargin: 28
-    messageMargin: 40
-    actorMargin: 60
-    labelBoxWidth: 56
-    labelBoxHeight: 28
-  themeVariables:
-    primaryColor: "#3b6fb6"
-    primaryTextColor: "#ffffff"
-    primaryBorderColor: "#2c5590"
-    lineColor: "#8b949e"
-    textColor: "#4d86d6"
-    actorBkg: "#3b6fb6"
-    actorBorder: "#2c5590"
-    actorTextColor: "#ffffff"
-    actorLineColor: "#8b949e"
-    signalColor: "#8b949e"
-    signalTextColor: "#4d86d6"
-    noteBkgColor: "#3b6fb6"
-    noteTextColor: "#ffffff"
-    noteBorderColor: "#2c5590"
-    secondaryColor: "#3b6fb6"
-    tertiaryColor: "#3b6fb6"
-    clusterBkg: "transparent"
-    clusterBorder: "#8b949e"
-    titleColor: "#4d86d6"
-    edgeLabelBackground: "#3b6fb6"
-    classText: "#ffffff"
-    labelBoxBkgColor: "#3b6fb6"
-    labelBoxBorderColor: "#2c5590"
-    labelTextColor: "#ffffff"
-    loopTextColor: "#4d86d6"
-    mainBkg: "#3b6fb6"
-    nodeBorder: "#2c5590"
-    nodeTextColor: "#ffffff"
-    secondaryBorderColor: "#2c5590"
-    secondaryTextColor: "#ffffff"
-    tertiaryBorderColor: "#2c5590"
-    tertiaryTextColor: "#ffffff"
-    errorBkgColor: "#3b6fb6"
-    errorTextColor: "#ffffff"
----
-classDiagram
-    class Driver {
-        <<interface>>
-        connect() bool
-        disconnect()
-        get_info() InfoResponse
-        load_sequence(sequence) LoadSequenceResponse
-        shoot() ShootResponse
-        set_outputs(outputs) Response
-        stop() Response
-        get_status() StatusResponse
-    }
-    Driver <|.. DefaultDriver
-    Driver <|.. FakeDriver
-    Driver <|.. SynchronizedDriver
-    SynchronizedDriver o-- Driver : wraps
-    DefaultDriver o-- FramedSerial : owns
-    ShotRunner --> Driver : uses
-    FreezerNode o-- SynchronizedDriver : owns
-    FreezerNode o-- ShotRunner : owns
-```
+<!-- The source is diagrams/driver-classes.mmd: change it, then run bin/render-diagrams.sh. -->
+<p align="center"><img src="diagrams/driver-classes.svg" alt="The Driver interface and its three implementations: DefaultDriver owns a FramedSerial, FakeDriver stands in for the board, and SynchronizedDriver wraps another driver; FreezerNode owns a SynchronizedDriver and a ShotRunner, which uses a driver." width="579"></p>
 
 ### Driver
 
@@ -533,86 +257,15 @@ The controller can come and go, see [Losing the Controller](#losing-the-controll
 
 ## A Shot from the Host
 
-```mermaid
----
-config:
-  theme: base
-  themeCSS: ".edgeLabel p { padding: 4px 10px; }"
-  flowchart:
-    padding: 20
-    nodeSpacing: 40
-    rankSpacing: 50
-  class:
-    padding: 16
-  sequence:
-    boxMargin: 12
-    boxTextMargin: 8
-    noteMargin: 28
-    messageMargin: 40
-    actorMargin: 60
-    labelBoxWidth: 56
-    labelBoxHeight: 28
-  themeVariables:
-    primaryColor: "#3b6fb6"
-    primaryTextColor: "#ffffff"
-    primaryBorderColor: "#2c5590"
-    lineColor: "#8b949e"
-    textColor: "#4d86d6"
-    actorBkg: "#3b6fb6"
-    actorBorder: "#2c5590"
-    actorTextColor: "#ffffff"
-    actorLineColor: "#8b949e"
-    signalColor: "#8b949e"
-    signalTextColor: "#4d86d6"
-    noteBkgColor: "#3b6fb6"
-    noteTextColor: "#ffffff"
-    noteBorderColor: "#2c5590"
-    secondaryColor: "#3b6fb6"
-    tertiaryColor: "#3b6fb6"
-    clusterBkg: "transparent"
-    clusterBorder: "#8b949e"
-    titleColor: "#4d86d6"
-    edgeLabelBackground: "#3b6fb6"
-    classText: "#ffffff"
-    labelBoxBkgColor: "#3b6fb6"
-    labelBoxBorderColor: "#2c5590"
-    labelTextColor: "#ffffff"
-    loopTextColor: "#4d86d6"
-    mainBkg: "#3b6fb6"
-    nodeBorder: "#2c5590"
-    nodeTextColor: "#ffffff"
-    secondaryBorderColor: "#2c5590"
-    secondaryTextColor: "#ffffff"
-    tertiaryBorderColor: "#2c5590"
-    tertiaryTextColor: "#ffffff"
-    errorBkgColor: "#3b6fb6"
-    errorTextColor: "#ffffff"
----
-sequenceDiagram
-    participant Client
-    participant Node as FreezerNode
-    participant MCU as Nano firmware
-    Client->>Node: goal, sequence flash_shot
-    Note over Node: build the table, check the limits
-    Node-->>Client: accepted
-    Node-->>Client: feedback LOADING
-    opt another table than the one loaded last
-        Node->>MCU: LoadSequence
-        MCU-->>Node: duration
-    end
-    Node->>MCU: Shoot
-    Note over MCU: latch step 0, arm the timer
-    MCU-->>Node: shot id, duration
-    Node-->>Client: feedback RUNNING, shot id
-    loop every poll_period
-        Node->>MCU: Status
-        MCU-->>Node: running, step, elapsed
-        Node-->>Client: feedback step, elapsed
-    end
-    Node->>MCU: Status
-    MCU-->>Node: idle, same shot id, worst lateness
-    Node-->>Client: result, shot id, timings
-```
+First the node checks the goal, loads the table when it is not the one loaded last, and starts the shot:
+
+<!-- The source is diagrams/shot-start.mmd: change it, then run bin/render-diagrams.sh. -->
+<p align="center"><img src="diagrams/shot-start.svg" alt="The client sends a goal; FreezerNode builds the table and checks the limits, accepts the goal, loads the table into the Nano firmware when another table is loaded, sends Shoot, and reports the shot as running." width="608"></p>
+
+Then it polls the controller until the shot has ended, and returns the result:
+
+<!-- The source is diagrams/shot-polling.mmd: change it, then run bin/render-diagrams.sh. -->
+<p align="center"><img src="diagrams/shot-polling.svg" alt="FreezerNode polls the status of the Nano firmware every poll period and forwards the step and the elapsed time as feedback, until the firmware reads idle with the same shot id, and then returns the result with the timings." width="612"></p>
 
 The host learns the end of a shot late, by up to one polling period plus a status query, about 15 ms, which is harmless when the cooldown alone is 200 ms. The controller, not the host's clock, decides when the shot has ended: the duration is only the host's deadline.
 
@@ -656,76 +309,8 @@ With the fake controller, `~/fake/press_trigger` presses IN1 of the `FakeDriver`
 
 The board page, in `web`, fires the commands and draws the timing of each shot. It reaches the node through rosbridge, a WebSocket that speaks JSON, so that the browser needs no ROS: the launch file starts a rosbridge of its own, on port 9092, since a rosbridge only knows the messages installed next to it, and serves the built page with Python's HTTP server, on port 8092.
 
-```mermaid
----
-config:
-  theme: base
-  themeCSS: ".edgeLabel p { padding: 4px 10px; }"
-  flowchart:
-    padding: 20
-    nodeSpacing: 40
-    rankSpacing: 50
-  class:
-    padding: 16
-  sequence:
-    boxMargin: 12
-    boxTextMargin: 8
-    noteMargin: 28
-    messageMargin: 40
-    actorMargin: 60
-    labelBoxWidth: 56
-    labelBoxHeight: 28
-  themeVariables:
-    primaryColor: "#3b6fb6"
-    primaryTextColor: "#ffffff"
-    primaryBorderColor: "#2c5590"
-    lineColor: "#8b949e"
-    textColor: "#4d86d6"
-    actorBkg: "#3b6fb6"
-    actorBorder: "#2c5590"
-    actorTextColor: "#ffffff"
-    actorLineColor: "#8b949e"
-    signalColor: "#8b949e"
-    signalTextColor: "#4d86d6"
-    noteBkgColor: "#3b6fb6"
-    noteTextColor: "#ffffff"
-    noteBorderColor: "#2c5590"
-    secondaryColor: "#3b6fb6"
-    tertiaryColor: "#3b6fb6"
-    clusterBkg: "transparent"
-    clusterBorder: "#8b949e"
-    titleColor: "#4d86d6"
-    edgeLabelBackground: "#3b6fb6"
-    classText: "#ffffff"
-    labelBoxBkgColor: "#3b6fb6"
-    labelBoxBorderColor: "#2c5590"
-    labelTextColor: "#ffffff"
-    loopTextColor: "#4d86d6"
-    mainBkg: "#3b6fb6"
-    nodeBorder: "#2c5590"
-    nodeTextColor: "#ffffff"
-    secondaryBorderColor: "#2c5590"
-    secondaryTextColor: "#ffffff"
-    tertiaryBorderColor: "#2c5590"
-    tertiaryTextColor: "#ffffff"
-    errorBkgColor: "#3b6fb6"
-    errorTextColor: "#ffffff"
----
-flowchart LR
-    subgraph Browser["The page"]
-        Controls["Commands"]
-        Shots["Shots<br/>timing diagram"]
-        Store["Freezer<br/>the state, the commands"]
-        Ros["Rosbridge<br/>WebSocket client"]
-        Controls --> Store
-        Shots --> Store
-        Store --> Ros
-    end
-    Ros <-- "subscribe, call_service<br/>send_action_goal" --> Bridge["rosbridge"]
-    Bridge <--> Node["freezer_node"]
-
-    classDef default fill:#3b6fb6,stroke:#2c5590,color:#ffffff
-```
+<!-- The source is diagrams/board-page.mmd: change it, then run bin/render-diagrams.sh. -->
+<p align="center"><img src="diagrams/board-page.svg" alt="The board page: its commands and its timing diagram of the shots use the Freezer store, which talks through a Rosbridge WebSocket client to rosbridge and on to freezer_node." width="417"></p>
 
 | File | Role |
 |---|---|

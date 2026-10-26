@@ -15,3 +15,6 @@ cd "$(dirname "$(readlink -f "$0")")/.."
 
 colcon test --return-code-on-test-failure
 colcon test-result --all --verbose
+
+# Fails when an SVG of docs/diagrams is out of date with its Mermaid source.
+bin/check-diagrams.sh

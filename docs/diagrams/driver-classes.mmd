@@ -1,0 +1,76 @@
+---
+config:
+  theme: base
+  fontFamily: "Arial, Helvetica, sans-serif"
+  flowchart:
+    curve: basis
+    padding: 12
+    nodeSpacing: 46
+    rankSpacing: 32
+    subGraphTitleMargin:
+      top: 4
+      bottom: 10
+  class:
+    padding: 10
+    hideEmptyMembersBox: true
+  themeVariables:
+    lineColor: "#94a3b8"
+    textColor: "#64748b"
+    primaryColor: "#f1f5f9"
+    primaryBorderColor: "#64748b"
+    primaryTextColor: "#0f172a"
+    secondaryColor: "#f1f5f9"
+    secondaryBorderColor: "#64748b"
+    secondaryTextColor: "#0f172a"
+    tertiaryColor: "#f1f5f9"
+    tertiaryBorderColor: "#64748b"
+    tertiaryTextColor: "#0f172a"
+    mainBkg: "#f1f5f9"
+    nodeBorder: "#64748b"
+    nodeTextColor: "#0f172a"
+    classText: "#0f172a"
+    clusterBkg: "transparent"
+    clusterBorder: "#94a3b8"
+    titleColor: "#64748b"
+    edgeLabelBackground: "#ffffff"
+  themeCSS: >
+    svg, .label, .nodeLabel, .edgeLabel, foreignObject div { font-family: Arial, Helvetica, sans-serif; }
+    .node rect, .node polygon, .node path {
+      filter: drop-shadow(0 3px 6px rgba(15, 23, 42, 0.18));
+    }
+    .node rect { rx: 14px; ry: 14px; }
+    .cluster rect { rx: 18px; ry: 18px; }
+    .edgeLabel, .edgeLabel p, .edgeLabel span {
+      background: #ffffff; color: #475569; border-radius: 999px;
+    }
+    .edgeLabel p { padding: 3px 10px; }
+    .labelBkg { background: transparent !important; fill: none !important; }
+---
+classDiagram
+    class Driver {
+        <<interface>>
+        connect() bool
+        disconnect()
+        get_info() InfoResponse
+        load_sequence(sequence) LoadSequenceResponse
+        shoot() ShootResponse
+        set_outputs(outputs) Response
+        stop() Response
+        get_status() StatusResponse
+    }
+    Driver <|.. DefaultDriver
+    Driver <|.. FakeDriver
+    Driver <|.. SynchronizedDriver
+    SynchronizedDriver o-- Driver : wraps
+    DefaultDriver o-- FramedSerial : owns
+    ShotRunner --> Driver : uses
+    FreezerNode o-- SynchronizedDriver : owns
+    FreezerNode o-- ShotRunner : owns
+
+    style Driver fill:#7c3aed,stroke:#5b21b6,stroke-width:2px,color:#ffffff
+    style DefaultDriver fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f
+    style FramedSerial fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f
+    style FakeDriver fill:#f1f5f9,stroke:#64748b,stroke-width:2px,color:#0f172a
+    style SynchronizedDriver fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#4c1d95
+    style ShotRunner fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#4c1d95
+    style FreezerNode fill:#ccfbf1,stroke:#0d9488,stroke-width:2px,color:#134e4a

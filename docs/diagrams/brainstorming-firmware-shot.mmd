@@ -1,0 +1,86 @@
+---
+config:
+  theme: base
+  fontFamily: "Arial, Helvetica, sans-serif"
+  flowchart:
+    curve: basis
+    padding: 12
+    nodeSpacing: 46
+    rankSpacing: 32
+    subGraphTitleMargin:
+      top: 4
+      bottom: 10
+  class:
+    padding: 10
+  themeVariables:
+    lineColor: "#94a3b8"
+    textColor: "#64748b"
+    primaryColor: "#f1f5f9"
+    primaryBorderColor: "#64748b"
+    primaryTextColor: "#0f172a"
+    secondaryColor: "#f1f5f9"
+    secondaryBorderColor: "#64748b"
+    secondaryTextColor: "#0f172a"
+    tertiaryColor: "#f1f5f9"
+    tertiaryBorderColor: "#64748b"
+    tertiaryTextColor: "#0f172a"
+    mainBkg: "#f1f5f9"
+    nodeBorder: "#64748b"
+    nodeTextColor: "#0f172a"
+    classText: "#0f172a"
+    clusterBkg: "transparent"
+    clusterBorder: "#94a3b8"
+    titleColor: "#64748b"
+    edgeLabelBackground: "#ffffff"
+  themeCSS: >
+    svg, .label, .nodeLabel, .edgeLabel, foreignObject div { font-family: Arial, Helvetica, sans-serif; }
+    .node rect, .node polygon, .node path {
+      filter: drop-shadow(0 3px 6px rgba(15, 23, 42, 0.18));
+    }
+    .node rect { rx: 14px; ry: 14px; }
+    .cluster rect { rx: 18px; ry: 18px; }
+    .edgeLabel, .edgeLabel p, .edgeLabel span {
+      background: #ffffff; color: #475569; border-radius: 999px;
+    }
+    .edgeLabel p { padding: 3px 10px; }
+    .labelBkg { background: transparent !important; fill: none !important; }
+---
+flowchart TB
+    Command(["<b>ShootCommand</b><br/>step table"])
+    Validate("Valid and idle?")
+    Error("<b>Error response</b>")
+    Load("<b>Load the table</b><br/>shift in step 0")
+    Start("<b>Start Timer1</b><br/>send ShotResponse")
+    ISR{{"<b>Timer1 interrupt</b><br/>pulse ST_CP"}}
+    Next("<b>Shift in the next pattern</b><br/>set the next compare value")
+    Last("Last step?")
+    Done("<b>Stop Timer1</b><br/>record the result")
+
+    Command --> Validate
+    Validate -- "no" --> Error
+    Validate -- "yes" --> Load
+    Load --> Start
+    Start --> ISR
+    ISR ==> Next
+    Next --> Last
+    Last -. "no" .-> ISR
+    Last -- "yes" --> Done
+
+    classDef human fill:#ffe4e6,stroke:#e11d48,stroke-width:2px,color:#881337
+    classDef voice fill:#ccfbf1,stroke:#0d9488,stroke-width:2px,color:#134e4a
+    classDef mind  fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#4c1d95
+    classDef brain fill:#7c3aed,stroke:#5b21b6,stroke-width:2px,color:#ffffff
+    classDef robot fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f
+    classDef data  fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e3a8a
+    classDef ext   fill:#f1f5f9,stroke:#64748b,stroke-width:2px,color:#0f172a
+
+    class Command human
+    class Validate,Last mind
+    class Error ext
+    class Load,Start,Next,Done robot
+    class ISR brain
+
+    linkStyle 0,2,3,4,6,8 stroke:#8b5cf6,stroke-width:2px
+    linkStyle 1 stroke:#f43f5e,stroke-width:2px
+    linkStyle 5 stroke:#f59e0b,stroke-width:3px
+    linkStyle 7 stroke:#f59e0b,stroke-width:2px
