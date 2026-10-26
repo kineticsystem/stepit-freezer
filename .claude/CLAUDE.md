@@ -66,3 +66,4 @@ For the `architect` and `reviewer` skills: what they cannot find out alone.
 - Every source file carries the MIT copyright header (`ament_copyright` enforces it).
 - C++23, compiled with `-Werror -Wall -Wextra -Wpedantic -Wshadow -Wconversion`; `cpplint` with `--linelength=121`; `clang-format` and `clang-tidy` with the repo's files.
 - Update the README and `docs/ARCHITECTURE.md` when the interface, the protocol or a safety net changes.
+- Diagrams follow the `beautiful-mermaid-diagrams` skill. Each diagram of a document is an image: its source is `docs/diagrams/<name>.mmd`, rendered by `bin/render-diagrams.sh` into an SVG beside it, outside the container (it needs Node.js and Chrome); commit both. `bin/check-diagrams.sh`, run by `bin/test.sh` and CI, fails when an SVG is older than its source. A note of `docs/pr/` may keep its diagram as a Mermaid block, in the same style.

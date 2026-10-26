@@ -215,74 +215,8 @@ On the ATmega328P of the Nano, three things decide how precise a step boundary i
 
 The extreme alternative is to disable interrupts for the whole shot and count cycles. The timing is then perfect, but the UART loses any byte that arrives during the shot, `millis()` stops, and the controller cannot answer anything. We would need it only if a few microseconds of jitter mattered, and they do not.
 
-```mermaid
----
-config:
-  theme: base
-  themeCSS: ".edgeLabel p { padding: 4px 10px; }"
-  flowchart:
-    padding: 20
-    nodeSpacing: 40
-    rankSpacing: 50
-  class:
-    padding: 16
-  sequence:
-    boxMargin: 12
-    boxTextMargin: 8
-    noteMargin: 28
-    messageMargin: 40
-    actorMargin: 60
-    labelBoxWidth: 56
-    labelBoxHeight: 28
-  themeVariables:
-    primaryColor: "#3b6fb6"
-    primaryTextColor: "#ffffff"
-    primaryBorderColor: "#2c5590"
-    lineColor: "#8b949e"
-    textColor: "#4d86d6"
-    actorBkg: "#3b6fb6"
-    actorBorder: "#2c5590"
-    actorTextColor: "#ffffff"
-    actorLineColor: "#8b949e"
-    signalColor: "#8b949e"
-    signalTextColor: "#4d86d6"
-    noteBkgColor: "#3b6fb6"
-    noteTextColor: "#ffffff"
-    noteBorderColor: "#2c5590"
-    secondaryColor: "#3b6fb6"
-    tertiaryColor: "#3b6fb6"
-    clusterBkg: "transparent"
-    clusterBorder: "#8b949e"
-    titleColor: "#4d86d6"
-    edgeLabelBackground: "#3b6fb6"
-    classText: "#ffffff"
-    labelBoxBkgColor: "#3b6fb6"
-    labelBoxBorderColor: "#2c5590"
-    labelTextColor: "#ffffff"
-    loopTextColor: "#4d86d6"
-    mainBkg: "#3b6fb6"
-    nodeBorder: "#2c5590"
-    nodeTextColor: "#ffffff"
-    secondaryBorderColor: "#2c5590"
-    secondaryTextColor: "#ffffff"
-    tertiaryBorderColor: "#2c5590"
-    tertiaryTextColor: "#ffffff"
-    errorBkgColor: "#3b6fb6"
-    errorTextColor: "#ffffff"
----
-flowchart TB
-    Command["ShootCommand<br/>step table"] --> Validate{"Valid and idle?"}
-    Validate -- no --> Error["Error response"]
-    Validate -- yes --> Load["Load the table<br/>shift in step 0"]
-    Load --> Start["Start Timer1<br/>send ShotResponse"]
-    Start --> ISR["Timer1 interrupt<br/>pulse ST_CP"]
-    ISR --> Next["Shift in the next pattern<br/>set the next compare value"]
-    Next --> Last{"Last step?"}
-    Last -- no --> ISR
-    Last -- yes --> Done["Stop Timer1<br/>record the result"]
-
-    classDef default fill:#3b6fb6,stroke:#2c5590,color:#ffffff
-```
+<!-- The source is ../diagrams/brainstorming-firmware-shot.mmd: change it, then run bin/render-diagrams.sh. -->
+<p align="center"><img src="../diagrams/brainstorming-firmware-shot.svg" alt="A shot in the firmware: a ShootCommand that is not valid or arrives while busy gets an error; otherwise the controller loads the table, starts Timer1 and answers, and each Timer1 interrupt pulses the latch and shifts in the next pattern until the last step stops the timer." width="366"></p>
 
 ### What the Controller Does While Shooting
 
@@ -300,76 +234,8 @@ The ISR should also measure itself: the `micros()` at each step boundary, or at 
 
 The controller keeps a shot state: idle, running or done, the shot id, the step it is on and the measured timings. A `ShotStatusQuery` returns it. The host polls until it reads "done" for its shot id.
 
-```mermaid
----
-config:
-  theme: base
-  themeCSS: ".edgeLabel p { padding: 4px 10px; }"
-  flowchart:
-    padding: 20
-    nodeSpacing: 40
-    rankSpacing: 50
-  class:
-    padding: 16
-  sequence:
-    boxMargin: 12
-    boxTextMargin: 8
-    noteMargin: 28
-    messageMargin: 40
-    actorMargin: 60
-    labelBoxWidth: 56
-    labelBoxHeight: 28
-  themeVariables:
-    primaryColor: "#3b6fb6"
-    primaryTextColor: "#ffffff"
-    primaryBorderColor: "#2c5590"
-    lineColor: "#8b949e"
-    textColor: "#4d86d6"
-    actorBkg: "#3b6fb6"
-    actorBorder: "#2c5590"
-    actorTextColor: "#ffffff"
-    actorLineColor: "#8b949e"
-    signalColor: "#8b949e"
-    signalTextColor: "#4d86d6"
-    noteBkgColor: "#3b6fb6"
-    noteTextColor: "#ffffff"
-    noteBorderColor: "#2c5590"
-    secondaryColor: "#3b6fb6"
-    tertiaryColor: "#3b6fb6"
-    clusterBkg: "transparent"
-    clusterBorder: "#8b949e"
-    titleColor: "#4d86d6"
-    edgeLabelBackground: "#3b6fb6"
-    classText: "#ffffff"
-    labelBoxBkgColor: "#3b6fb6"
-    labelBoxBorderColor: "#2c5590"
-    labelTextColor: "#ffffff"
-    loopTextColor: "#4d86d6"
-    mainBkg: "#3b6fb6"
-    nodeBorder: "#2c5590"
-    nodeTextColor: "#ffffff"
-    secondaryBorderColor: "#2c5590"
-    secondaryTextColor: "#ffffff"
-    tertiaryBorderColor: "#2c5590"
-    tertiaryTextColor: "#ffffff"
-    errorBkgColor: "#3b6fb6"
-    errorTextColor: "#ffffff"
----
-sequenceDiagram
-    participant Driver as DefaultDriver
-    participant MCU as Nano firmware
-    participant ISR as Timer1 ISR
-    Driver->>MCU: ShootCommand
-    MCU->>ISR: start
-    MCU-->>Driver: ShotResponse, shot id 7
-    loop until done
-        Driver->>MCU: ShotStatusQuery
-        MCU-->>Driver: running, step 2
-    end
-    Note over ISR: last step ends
-    Driver->>MCU: ShotStatusQuery
-    MCU-->>Driver: done, shot id 7, timings
-```
+<!-- The source is ../diagrams/brainstorming-status-query.mmd: change it, then run bin/render-diagrams.sh. -->
+<p align="center"><img src="../diagrams/brainstorming-status-query.svg" alt="The host polls: the driver sends a ShootCommand, gets the shot id, and sends status queries until the controller reads done for that shot, with the timings." width="580"></p>
 
 It keeps the protocol exactly as it is, and the polling doubles as the watchdog heartbeat. The price is latency, up to one polling period, and a few small frames during the shot, which the ISR barely notices.
 
@@ -407,78 +273,8 @@ A hardware version of the same idea uses the free D8: the X-sync of one camera, 
 
 This is the protocol of the old firmware, with its faults fixed. A `ShootCommand` gets two answers carrying the same sequence number: a `ShotResponse` when the shot starts and a `ShotFinished` when it ends. Every other command keeps its single answer.
 
-```mermaid
----
-config:
-  theme: base
-  themeCSS: ".edgeLabel p { padding: 4px 10px; }"
-  flowchart:
-    padding: 20
-    nodeSpacing: 40
-    rankSpacing: 50
-  class:
-    padding: 16
-  sequence:
-    boxMargin: 12
-    boxTextMargin: 8
-    noteMargin: 28
-    messageMargin: 40
-    actorMargin: 60
-    labelBoxWidth: 56
-    labelBoxHeight: 28
-  themeVariables:
-    primaryColor: "#3b6fb6"
-    primaryTextColor: "#ffffff"
-    primaryBorderColor: "#2c5590"
-    lineColor: "#8b949e"
-    textColor: "#4d86d6"
-    actorBkg: "#3b6fb6"
-    actorBorder: "#2c5590"
-    actorTextColor: "#ffffff"
-    actorLineColor: "#8b949e"
-    signalColor: "#8b949e"
-    signalTextColor: "#4d86d6"
-    noteBkgColor: "#3b6fb6"
-    noteTextColor: "#ffffff"
-    noteBorderColor: "#2c5590"
-    secondaryColor: "#3b6fb6"
-    tertiaryColor: "#3b6fb6"
-    clusterBkg: "transparent"
-    clusterBorder: "#8b949e"
-    titleColor: "#4d86d6"
-    edgeLabelBackground: "#3b6fb6"
-    classText: "#ffffff"
-    labelBoxBkgColor: "#3b6fb6"
-    labelBoxBorderColor: "#2c5590"
-    labelTextColor: "#ffffff"
-    loopTextColor: "#4d86d6"
-    mainBkg: "#3b6fb6"
-    nodeBorder: "#2c5590"
-    nodeTextColor: "#ffffff"
-    secondaryBorderColor: "#2c5590"
-    secondaryTextColor: "#ffffff"
-    tertiaryBorderColor: "#2c5590"
-    tertiaryTextColor: "#ffffff"
-    errorBkgColor: "#3b6fb6"
-    errorTextColor: "#ffffff"
----
-sequenceDiagram
-    participant Driver as DefaultDriver
-    participant MCU as Nano firmware
-    participant ISR as Timer1 ISR
-    Driver->>MCU: ShootCommand, seq 7
-    Note over MCU: validate the table
-    MCU->>ISR: start
-    MCU-->>Driver: ShotResponse, seq 7, duration
-    Note over Driver: no request while waiting
-    Note over ISR: last step ends
-    ISR->>MCU: done
-    MCU-->>Driver: ShotFinished, seq 7, timings
-    alt nothing within duration plus margin
-        Driver->>MCU: ShotStatusQuery
-        MCU-->>Driver: done, seq 7, timings
-    end
-```
+<!-- The source is ../diagrams/brainstorming-two-answers.mmd: change it, then run bin/render-diagrams.sh. -->
+<p align="center"><img src="../diagrams/brainstorming-two-answers.svg" alt="Two answers to one request: the controller answers a ShootCommand with a ShotResponse when the shot starts and a ShotFinished when it ends, both with the same sequence number; the driver queries the status only if nothing arrives within the duration plus a margin." width="669"></p>
 
 The rules that make it safe:
 
@@ -690,82 +486,8 @@ A rejection carries no reason in ROS2, so the node logs it, and the rules are th
 
 One goal at a time keeps the controller simple, and the polling, the loading and the shot run on one thread that owns the driver.
 
-```mermaid
----
-config:
-  theme: base
-  themeCSS: ".edgeLabel p { padding: 4px 10px; }"
-  flowchart:
-    padding: 20
-    nodeSpacing: 40
-    rankSpacing: 50
-  class:
-    padding: 16
-  sequence:
-    boxMargin: 12
-    boxTextMargin: 8
-    noteMargin: 28
-    messageMargin: 40
-    actorMargin: 60
-    labelBoxWidth: 56
-    labelBoxHeight: 28
-  themeVariables:
-    primaryColor: "#3b6fb6"
-    primaryTextColor: "#ffffff"
-    primaryBorderColor: "#2c5590"
-    lineColor: "#8b949e"
-    textColor: "#4d86d6"
-    actorBkg: "#3b6fb6"
-    actorBorder: "#2c5590"
-    actorTextColor: "#ffffff"
-    actorLineColor: "#8b949e"
-    signalColor: "#8b949e"
-    signalTextColor: "#4d86d6"
-    noteBkgColor: "#3b6fb6"
-    noteTextColor: "#ffffff"
-    noteBorderColor: "#2c5590"
-    secondaryColor: "#3b6fb6"
-    tertiaryColor: "#3b6fb6"
-    clusterBkg: "transparent"
-    clusterBorder: "#8b949e"
-    titleColor: "#4d86d6"
-    edgeLabelBackground: "#3b6fb6"
-    classText: "#ffffff"
-    labelBoxBkgColor: "#3b6fb6"
-    labelBoxBorderColor: "#2c5590"
-    labelTextColor: "#ffffff"
-    loopTextColor: "#4d86d6"
-    mainBkg: "#3b6fb6"
-    nodeBorder: "#2c5590"
-    nodeTextColor: "#ffffff"
-    secondaryBorderColor: "#2c5590"
-    secondaryTextColor: "#ffffff"
-    tertiaryBorderColor: "#2c5590"
-    tertiaryTextColor: "#ffffff"
-    errorBkgColor: "#3b6fb6"
-    errorTextColor: "#ffffff"
----
-sequenceDiagram
-    participant Client
-    participant Node as FreezerNode
-    participant MCU as Nano firmware
-    Client->>Node: goal, sequence flash_shot
-    Note over Node: build the table, check the limits
-    Node-->>Client: accepted
-    Node-->>Client: feedback LOADING
-    opt another table is loaded
-        Node->>MCU: LoadSequence
-        MCU-->>Node: duration
-    end
-    Node->>MCU: Shoot
-    MCU-->>Node: shot id, duration
-    Node-->>Client: feedback RUNNING, shot id
-    loop every 10 ms
-        Node->>MCU: Status
-        MCU-->>Node: running or idle
-    end
-    Node-->>Client: result, timings
-```
+<!-- The source is ../diagrams/brainstorming-host-shot.mmd: change it, then run bin/render-diagrams.sh. -->
+<p align="center"><img src="../diagrams/brainstorming-host-shot.svg" alt="A shot from the host: FreezerNode accepts the goal, loads the table when another one is loaded, sends Shoot, reports the shot as running, polls the status every 10 ms until the controller is idle, and returns the result." width="604"></p>
 
 ### The Node Parameters
 
