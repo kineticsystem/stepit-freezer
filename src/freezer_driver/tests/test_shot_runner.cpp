@@ -26,12 +26,12 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+
 #include <set>
 #include <stdexcept>
 #include <utility>
-
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
 
 #include <freezer_driver/fake/fake_driver.hpp>
 #include <freezer_driver/shot_runner.hpp>
