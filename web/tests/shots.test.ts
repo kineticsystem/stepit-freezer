@@ -24,6 +24,7 @@ function message(event: number, change: Partial<ShotMessage> = {}): ShotMessage 
     duration_us: 3_000,
     elapsed_us: 0,
     worst_lateness_us: 0,
+    missed_status: 0,
     message: '',
     ...change,
   };

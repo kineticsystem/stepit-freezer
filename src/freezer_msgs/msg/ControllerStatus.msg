@@ -14,3 +14,8 @@ string device
 
 # Why it is not connected, e.g. the error of the serial port; empty when it is.
 string message
+
+# Status queries the controller left unanswered during the shots since the
+# node started, asked again. A healthy controller leaves none: more than 0 is
+# a fault to look into, e.g. its firmware or its USB cable.
+uint32 missed_status

@@ -34,6 +34,8 @@ export interface ShotMessage {
   duration_us: number;
   elapsed_us: number;
   worst_lateness_us: number;
+  /** Status queries left unanswered during the shot; a healthy controller leaves none. */
+  missed_status: number;
   message: string;
 }
 
@@ -62,6 +64,8 @@ export interface ShootResult {
   shot_id: number;
   duration_us: number;
   worst_lateness_us: number;
+  /** Status queries left unanswered during the shot; a healthy controller leaves none. */
+  missed_status: number;
 }
 
 export interface FreezerState {

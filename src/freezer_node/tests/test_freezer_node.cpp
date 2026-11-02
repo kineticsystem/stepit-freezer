@@ -293,6 +293,7 @@ TEST_F(TestFreezerNode, shoot_default_sequence)
   ASSERT_EQ(wrapped.code, ResultCode::SUCCEEDED) << wrapped.result->message;
   EXPECT_EQ(wrapped.result->shot_id, 1);
   EXPECT_EQ(wrapped.result->duration_us, 4'000u);
+  EXPECT_EQ(wrapped.result->missed_status, 0u);
 
   std::vector<uint16_t> outputs;
   for (const auto& latch : fake->timeline())
@@ -455,6 +456,49 @@ TEST_F(TestFreezerNode, shots_topic)
   EXPECT_EQ(received_outputs.back().outputs, 0x0000);
 }
 
+/**
+ * A status reply lost during a shot is asked again: the shot succeeds, and
+ * tells the miss in its result, on ~/shots, and in the count of ~/status,
+ * since a healthy controller misses none.
+ */
+TEST_F(TestFreezerNode, a_lost_status_reply_is_reported)
+{
+  auto listener = std::make_shared<rclcpp::Node>("missed_listener");
+  uint32_t missed_since_start = 0;
+  auto subscription = listener->create_subscription<StatusMsg>(
+      "/freezer/status", rclcpp::QoS{ 10 }.reliable().transient_local(), [&](const StatusMsg& message) {
+        std::lock_guard lock{ mutex };
+        missed_since_start = message.missed_status;
+      });
+  executor.add_node(listener);
+
+  fake->set_failure(FakeDriver::Failure::LoseStatusReply);
+  auto handle = send(raw_goal({ { 0x0003, 1'000 }, { 0x0000, 2'000 } }));
+  ASSERT_TRUE(handle);
+  const auto wrapped = result(handle);
+  ASSERT_EQ(wrapped.code, ResultCode::SUCCEEDED) << wrapped.result->message;
+  EXPECT_EQ(wrapped.result->missed_status, 1u);
+
+  ASSERT_TRUE(wait_shots([](const auto& received) { return received.size() >= 2; }));
+  {
+    std::lock_guard lock{ mutex };
+    EXPECT_EQ(shots[1].event, ShotMsg::ENDED);
+    EXPECT_EQ(shots[1].missed_status, 1u);
+  }
+  EXPECT_TRUE(wait_until([&] {
+    std::lock_guard lock{ mutex };
+    return missed_since_start == 1u;
+  }));
+
+  // The count adds up over the shots.
+  ASSERT_EQ(result(send(raw_goal({ { 0x0003, 1'000 }, { 0x0000, 2'000 } }))).code, ResultCode::SUCCEEDED);
+  EXPECT_TRUE(wait_until([&] {
+    std::lock_guard lock{ mutex };
+    return missed_since_start == 2u;
+  }));
+  executor.remove_node(listener);
+}
+
 TEST_F(TestFreezerNode, shots_topic_tells_a_stop)
 {
   auto handle = send(raw_goal({ { 0x0003, 2'000'000 }, { 0x0000, 1'000 } }));
@@ -561,6 +605,7 @@ TEST_F(TestFreezerNode, status_topic)
     EXPECT_TRUE(statuses[0].connected);
     EXPECT_EQ(statuses[0].device, "fake");
     EXPECT_EQ(statuses[0].message, "");
+    EXPECT_EQ(statuses[0].missed_status, 0u);
   }
   std::this_thread::sleep_for(2500ms);
   {

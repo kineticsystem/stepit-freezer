@@ -265,7 +265,7 @@ ros2 topic echo /freezer/outputs
 ros2 topic echo /freezer/shots
 ```
 
-A third topic, `~/status`, tells whether the node talks to the controller, and why not, e.g. `No Freezer controller.`. It keeps its last message too, and comes again every second, so that a client knows the node still runs:
+A third topic, `~/status`, tells whether the node talks to the controller, and why not, e.g. `No Freezer controller.`, and in `missed_status` how many status queries it left unanswered during the shots since the node started. It keeps its last message too, and comes again every second, so that a client knows the node still runs:
 
 ```
 ros2 topic echo /freezer/status --qos-durability transient_local
@@ -277,7 +277,7 @@ To use the Freezer board, set the launch argument `use_fake`:
 ros2 launch freezer_node freezer.launch.py use_fake:=false usb_port:=/dev/ttyACM0
 ```
 
-The result of a shot reports `worst_lateness_us`, the latest a step started after its time, as the controller measured it: 2 to 3 µs.
+The result of a shot reports `worst_lateness_us`, the latest a step started after its time, as the controller measured it: 2 to 3 µs, and `missed_status`, the status queries the controller left unanswered during the shot, which the node asked again. `~/shots` tells it too, when the shot ends.
 
 ### The Board Page
 
@@ -335,6 +335,8 @@ Each sequence has a `recipe` and the parameters of that recipe, in milliseconds.
 **The upload to a Nano R4 fails with `Cannot open DFU device 2341:0074 found on devnum 2 (LIBUSB_ERROR_ACCESS)`.** Our user cannot write the USB device of the Nano R4. Install its udev rule, see [Access the Serial Port](#access-the-serial-port).
 
 **Every shot is rejected, and the log says `Every shot is rejected until it answers` or `The Freezer controller stopped answering`.** The Nano is unplugged, or the computer did not see it, as a Raspberry Pi sometimes does at boot. Plug it in again: the node tries to connect every `reconnect_period`, 2 s, and logs `The Freezer controller is back`, with no restart. `/freezer/status` tells the error of the last try.
+
+**The log says `the controller left 1 status queries unanswered`, or `missed_status` is not 0.** The shot succeeded, because the node asked again, but a healthy controller leaves none: something loses requests or replies. Firmware 2.1.0 lost about one in 2000 during a shot, a fault of the firmware fixed in 2.1.1: flash the firmware of this workspace. With 2.1.1, look at the USB cable and what runs next to it.
 
 **`Permission denied` when opening `/dev/ttyACM0`.** Our user is not in the group `dialout`, or we have not logged in again since joining it. See [Access the Serial Port](#access-the-serial-port).
 

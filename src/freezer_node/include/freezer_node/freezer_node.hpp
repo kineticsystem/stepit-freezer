@@ -217,5 +217,8 @@ private:
   std::mutex status_mutex_;
   bool status_connected_ = false;
   std::string status_message_;
+  // Status queries the controller left unanswered during the shots since the
+  // node started: written by the thread of a shot, read by the executor's.
+  std::atomic<uint32_t> missed_status_{ 0 };
 };
 }  // namespace freezer_node

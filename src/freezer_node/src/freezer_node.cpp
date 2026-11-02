@@ -365,6 +365,7 @@ void FreezerNode::publish_status()
     status.connected = status_connected_;
     status.message = status_message_;
   }
+  status.missed_status = missed_status_;
   status_publisher_->publish(status);
 }
 
@@ -574,6 +575,7 @@ void FreezerNode::execute(const std::shared_ptr<GoalHandle>& goal_handle)
   {
     // The shot started: tell how it ended.
     auto message = shot_message(ShotMsg::ENDED, ShotMsg::SOURCE_NODE, shot.shot_id, *started, sequence);
+    message.missed_status = static_cast<uint16_t>(shot.missed_status);
     if (stopped)
     {
       message.event = ShotMsg::STOPPED;
@@ -598,14 +600,21 @@ void FreezerNode::execute(const std::shared_ptr<GoalHandle>& goal_handle)
 
   if (shot.missed_status > 0)
   {
-    RCLCPP_WARN(get_logger(), "Shot %u: the controller left %d status queries unanswered.", shot.shot_id,
-                shot.missed_status);
+    // A healthy controller leaves none: the shot was saved by asking again,
+    // but the fault is still there.
+    const uint32_t total = missed_status_ += static_cast<uint32_t>(shot.missed_status);
+    RCLCPP_WARN(get_logger(),
+                "Shot %u: the controller left %d status queries unanswered, %u since the node started. A healthy "
+                "controller leaves none: check its firmware and its USB cable.",
+                shot.shot_id, shot.missed_status, total);
+    publish_status();
   }
 
   result->message = shot.message;
   result->shot_id = shot.shot_id;
   result->duration_us = shot.duration_us;
   result->worst_lateness_us = shot.worst_lateness_us;
+  result->missed_status = static_cast<uint16_t>(shot.missed_status);
   switch (shot.outcome)
   {
     case Outcome::Succeeded:

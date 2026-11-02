@@ -33,5 +33,10 @@ uint32 elapsed_us
 # controller. Valid when ENDED.
 uint32 worst_lateness_us
 
+# Status queries the controller left unanswered during the shot, asked again.
+# A healthy controller leaves none. Valid when ENDED or FAILED, for a shot of
+# the node: the node does not query the controller during a shot of the trigger.
+uint16 missed_status
+
 # Why the shot failed, empty otherwise.
 string message

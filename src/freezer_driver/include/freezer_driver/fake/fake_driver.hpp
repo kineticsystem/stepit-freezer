@@ -59,6 +59,7 @@ public:
     None,
     NeverFinish,      // The shot never ends, as if the controller hung.
     ResetDuringShot,  // The controller resets at the first status query of a shot.
+    LoseStatusReply,  // The first status query of each shot goes unanswered: it throws, as on a timeout.
   };
 
   /** A pattern and when it was latched. */
@@ -138,6 +139,8 @@ private:
 
   Clock clock_;
   Failure failure_ = Failure::None;
+  // Whether the running shot has lost its status reply, for LoseStatusReply.
+  bool lost_status_reply_ = false;
   // Set by a test while the node may be calling the fake from another thread.
   std::atomic<bool> plugged_{ true };
   uint32_t lateness_us_ = 0;

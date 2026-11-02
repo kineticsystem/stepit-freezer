@@ -56,7 +56,7 @@ The node's interface:
 | `~/stop` | `std_srvs/srv/Trigger` service | End the running shot where it is, if any, and switch every output off. |
 | `~/outputs` | `freezer_msgs/msg/Outputs` topic | The pattern of the outputs, whenever it changes. |
 | `~/shots` | `freezer_msgs/msg/Shot` topic | Each shot when it starts, with its table and its start time, and when it ends, stops or fails. |
-| `~/status` | `freezer_msgs/msg/ControllerStatus` topic | Whether the controller is connected, and why not, when it changes and every second. |
+| `~/status` | `freezer_msgs/msg/ControllerStatus` topic | Whether the controller is connected, and why not, and the status queries it left unanswered since the node started, when it changes and every second. |
 | `~/fake/press_trigger` | `std_srvs/srv/Trigger` service | With the fake controller only: press IN1. |
 | `use_fake`, `usb_port`, `timeout`, ... | parameters | The connection, the polling and the sequences, see the [README](../README.md#parameters). |
 
@@ -245,7 +245,7 @@ A raw table can still be sent, in the goal, for experiments.
 - **It loads only what changed.** The controller does not say which table it holds, so the runner remembers the sequence it loaded last, and loads a sequence only when it differs. It forgets it whenever the controller may have lost it.
 - **It polls for the end.** It sleeps `poll_period`, 10 ms, between two status queries, reports the step and the elapsed time at each, and succeeds when the controller is idle with the shot's id.
 - **It gives up on a shot that does not end** within its duration plus `end_margin`, 100 ms.
-- **It asks again when a status query goes unanswered,** and gives up only after `max_missed_status`, 3, in a row: the shot runs on the controller whatever the host hears, and one reply lost, e.g. to noise on the USB cable, must not fail a stack of pictures. The node warns of every shot that missed one.
+- **It asks again when a status query goes unanswered,** and gives up only after `max_missed_status`, 3, in a row: the shot runs on the controller whatever the host hears, and one reply lost, e.g. to noise on the USB cable, must not fail a stack of pictures. A healthy controller misses none, so a miss is still a fault, only one that no longer costs a stack: the node warns of every shot that missed one, reports the count in the result of `Shoot` and on `~/shots`, and the count since it started in `missed_status` of `~/status`, where a client such as StepIt Macro's page shows it.
 - **Callbacks** let its caller cancel the shot before it is fired, and learn when it has started and how it progresses.
 
 ### FreezerNode

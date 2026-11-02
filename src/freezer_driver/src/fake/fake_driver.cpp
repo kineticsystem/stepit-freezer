@@ -94,6 +94,7 @@ ShootResponse FakeDriver::shoot()
   }
 
   start();
+  lost_status_reply_ = false;
   ShootResponse response{ Response::Status::Success };
   response.shot_id = last_shot_id_;
   response.duration_us = static_cast<uint32_t>(loaded_->duration_us());
@@ -153,6 +154,11 @@ StatusResponse FakeDriver::get_status()
   if (running_ && failure_ == Failure::ResetDuringShot)
   {
     reset();
+  }
+  if (running_ && failure_ == Failure::LoseStatusReply && !lost_status_reply_)
+  {
+    lost_status_reply_ = true;
+    throw std::runtime_error("timeout");
   }
   update();
 
