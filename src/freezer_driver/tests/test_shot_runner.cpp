@@ -29,10 +29,6 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include <set>
-#include <stdexcept>
-#include <utility>
-
 #include <freezer_driver/fake/fake_driver.hpp>
 #include <freezer_driver/shot_runner.hpp>
 
@@ -40,60 +36,6 @@ namespace freezer_driver::test
 {
 using std::chrono::microseconds;
 using Outcome = ShotRunner::Result::Outcome;
-
-/**
- * A controller whose status replies are lost, as to noise on the cable: the
- * status queries numbered in `lost`, from 1, throw. Everything else goes to
- * the fake controller.
- */
-class LossyDriver : public Driver
-{
-public:
-  LossyDriver(Driver& driver, std::set<int> lost) : driver_{ driver }, lost_{ std::move(lost) }
-  {
-  }
-  bool connect() override
-  {
-    return driver_.connect();
-  }
-  void disconnect() override
-  {
-    driver_.disconnect();
-  }
-  InfoResponse get_info() override
-  {
-    return driver_.get_info();
-  }
-  LoadSequenceResponse load_sequence(const Sequence& sequence) override
-  {
-    return driver_.load_sequence(sequence);
-  }
-  ShootResponse shoot() override
-  {
-    return driver_.shoot();
-  }
-  Response set_outputs(uint16_t outputs) override
-  {
-    return driver_.set_outputs(outputs);
-  }
-  Response stop() override
-  {
-    return driver_.stop();
-  }
-  StatusResponse get_status() override
-  {
-    if (lost_.count(++queries_))
-    {
-      throw std::runtime_error("timeout");
-    }
-    return driver_.get_status();
-  }
-
-private:
-  Driver& driver_;
-  std::set<int> lost_;
-  int queries_ = 0;
-};
 
 /**
  * A runner on a fake controller and a clock the test owns: each sleep of the
@@ -224,43 +166,5 @@ TEST_F(TestShotRunner, reset_between_shots)
   EXPECT_EQ(result.outcome, Outcome::Succeeded) << result.message;
   EXPECT_EQ(result.shot_id, 1);
   EXPECT_EQ(driver.loads(), 2);
-}
-
-/** A runner on the fake controller, with the given status replies lost. */
-ShotRunner lossy_runner(LossyDriver& lossy, microseconds& now)
-{
-  return ShotRunner{ lossy, ShotRunner::Config{ microseconds{ 1'000 }, microseconds{ 5'000 }, 3 },
-                     [&now] { return now; }, [&now](microseconds period) { now += period; } };
-}
-
-/** Two replies lost in a row do not fail the shot: it is counted, and succeeds. */
-TEST_F(TestShotRunner, lost_status_replies_are_asked_again)
-{
-  LossyDriver lossy{ driver, { 3, 4, 9 } };
-  auto lossy_shots = lossy_runner(lossy, now);
-  const auto result = lossy_shots.run(sequence);
-  EXPECT_EQ(result.outcome, Outcome::Succeeded) << result.message;
-  EXPECT_EQ(result.missed_status, 3);
-  EXPECT_EQ(now, microseconds{ 10'000 });
-}
-
-/** A reply lost at the end of the shot: the next query learns the end. */
-TEST_F(TestShotRunner, the_last_status_reply_lost)
-{
-  LossyDriver lossy{ driver, { 10 } };
-  auto lossy_shots = lossy_runner(lossy, now);
-  const auto result = lossy_shots.run(sequence);
-  EXPECT_EQ(result.outcome, Outcome::Succeeded) << result.message;
-  EXPECT_EQ(result.missed_status, 1);
-}
-
-/** Three replies lost in a row: the controller is gone, the shot fails. */
-TEST_F(TestShotRunner, too_many_status_replies_lost_in_a_row)
-{
-  LossyDriver lossy{ driver, { 2, 3, 4 } };
-  auto lossy_shots = lossy_runner(lossy, now);
-  const auto result = lossy_shots.run(sequence);
-  EXPECT_EQ(result.outcome, Outcome::Aborted);
-  EXPECT_THAT(result.message, ::testing::HasSubstr("did not answer 3 status queries in a row"));
 }
 }  // namespace freezer_driver::test

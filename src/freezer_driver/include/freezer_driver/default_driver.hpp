@@ -30,7 +30,6 @@
 
 #include <chrono>
 #include <memory>
-#include <vector>
 
 #include <framed_serial/framed_serial.hpp>
 #include <freezer_driver/driver.hpp>
@@ -63,17 +62,7 @@ public:
   StatusResponse get_status() override;
 
 private:
-  /**
-   * Send a request and read its reply. A reply carries no id of its request,
-   * so after a read that failed, e.g. timed out, the reply may still come and
-   * would be taken for the answer to the next request: the next request first
-   * reads and drops whatever is left, until a read fails.
-   */
-  std::vector<uint8_t> request(const std::vector<uint8_t>& in);
-
   std::unique_ptr<framed_serial::FramedSerial> framed_serial_;
   std::chrono::duration<double> connect_delay_;
-  // A read failed: a late reply may be on its way.
-  bool late_reply_possible_ = false;
 };
 }  // namespace freezer_driver
