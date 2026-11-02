@@ -97,7 +97,7 @@ A desktop grants the device to the user who is logged in, so a PC needs no rule.
 
 We develop the firmware with Visual Studio Code and the [PlatformIO](https://platformio.org) extension. Installing the Arduino IDE is not required.
 
-The firmware, version 2.1.0, answers `Info`, `Echo`, `LoadSequence`, `Shoot`, `Status`, `SetOutputs` and `Stop`, and fires the loaded sequence when IN1 is pressed, unless a shot is running or no sequence is loaded. A hardware timer runs the shot: each step starts at its own time, within 2 to 3 µs, as measured. A step must last at least 40 µs, the limit of the Nano 3 the board had before, which the Nano R4 keeps until it is measured there. The driver refuses a firmware of another major version, e.g. 1.1.0: flash the firmware of the same workspace.
+The firmware, version 2.1.1, answers `Info`, `Echo`, `LoadSequence`, `Shoot`, `Status`, `SetOutputs` and `Stop`, and fires the loaded sequence when IN1 is pressed, unless a shot is running or no sequence is loaded. A hardware timer runs the shot: each step starts at its own time, within 2 to 3 µs, as measured. A step must last at least 40 µs, the limit of the Nano 3 the board had before, which the Nano R4 keeps until it is measured there. The driver refuses a firmware of another major version, e.g. 1.1.0: flash the firmware of the same workspace.
 
 To flash the microcontroller code into the Nano:
 
@@ -314,7 +314,6 @@ ros2 launch freezer_node freezer.launch.py params_file:=/path/to/robot.yaml
 | `reconnect_period` | `2.0` | Seconds between two tries to connect while there is no controller: a Nano missing at start, or unplugged, is connected once it is plugged in. 0 tries once, at start. |
 | `poll_period` | `0.01` | Seconds between two status queries during a shot. |
 | `end_margin` | `0.1` | Seconds after the duration of a shot before the node gives up on it. |
-| `max_missed_status` | `3` | Status queries in a row that may go unanswered during a shot before the node gives up on it. A shot that missed some succeeds, with a warning. |
 | `watch_period` | `0.2` | Seconds between two status queries while no goal runs, to see the shots of the remote trigger. 0 stops the queries. |
 | `default_sequence` | `flash_shot` | The sequence of a goal that names none. |
 | `sequence_names` | `[flash_shot, timed_light]` | The sequences under `sequences`. A ROS2 node must declare a parameter before reading it, and these names tell it which to declare. |

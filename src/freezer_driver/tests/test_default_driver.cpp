@@ -237,49 +237,6 @@ TEST_F(TestDefaultDriver, error_reason)
   EXPECT_EQ(driver->get_status().reason(), Response::Reason::Malformed);
 }
 
-/** A status response of an idle controller whose last shot is shot_id. */
-std::vector<uint8_t> idle_status(uint8_t shot_id)
-{
-  return { 0x11, 0x00, 0x00, shot_id, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-}
-
-/**
- * A reply that comes after its request timed out is dropped by the next
- * request, which reads its own reply, not the late one.
- */
-TEST_F(TestDefaultDriver, a_late_reply_is_dropped_before_the_next_request)
-{
-  ::testing::InSequence in_order;
-  EXPECT_CALL(*serial, write(std::vector<uint8_t>{ 0x75 }));
-  EXPECT_CALL(*serial, read()).WillOnce(Throw(std::runtime_error("timeout")));
-  // The next request: the late reply, then nothing more, then its own.
-  EXPECT_CALL(*serial, read()).WillOnce(Return(idle_status(1)));
-  EXPECT_CALL(*serial, read()).WillOnce(Throw(std::runtime_error("timeout")));
-  EXPECT_CALL(*serial, write(std::vector<uint8_t>{ 0x75 }));
-  EXPECT_CALL(*serial, read()).WillOnce(Return(idle_status(2)));
-  // And the one after reads straight away.
-  EXPECT_CALL(*serial, write(std::vector<uint8_t>{ 0x75 }));
-  EXPECT_CALL(*serial, read()).WillOnce(Return(idle_status(3)));
-
-  EXPECT_THROW(driver->get_status(), std::runtime_error);
-  EXPECT_EQ(driver->get_status().last_shot_id, 2);
-  EXPECT_EQ(driver->get_status().last_shot_id, 3);
-}
-
-/** A reply that never comes costs the next request one read, then it goes on. */
-TEST_F(TestDefaultDriver, a_lost_reply_costs_the_next_request_one_read)
-{
-  ::testing::InSequence in_order;
-  EXPECT_CALL(*serial, write(std::vector<uint8_t>{ 0x75 }));
-  EXPECT_CALL(*serial, read()).WillOnce(Throw(std::runtime_error("timeout")));
-  EXPECT_CALL(*serial, read()).WillOnce(Throw(std::runtime_error("timeout")));
-  EXPECT_CALL(*serial, write(std::vector<uint8_t>{ 0x75 }));
-  EXPECT_CALL(*serial, read()).WillOnce(Return(idle_status(4)));
-
-  EXPECT_THROW(driver->get_status(), std::runtime_error);
-  EXPECT_EQ(driver->get_status().last_shot_id, 4);
-}
-
 TEST_F(TestDefaultDriver, short_response_throws)
 {
   EXPECT_CALL(*serial, write(_));

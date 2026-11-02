@@ -9,6 +9,8 @@ Each pull request has a notes file here. It keeps what the pull request does not
 | [016-nano-r4.md](016-nano-r4.md) | [#16](https://github.com/kineticsystem/stepit-freezer/pull/16) The Arduino Nano R4 |
 | [017-mermaid-diagrams.md](017-mermaid-diagrams.md) | [#17](https://github.com/kineticsystem/stepit-freezer/pull/17) Diagrams as SVG images, from Mermaid sources |
 | [018-tolerate-a-lost-reply.md](018-tolerate-a-lost-reply.md) | [#18](https://github.com/kineticsystem/stepit-freezer/pull/18) Tolerate a lost reply |
+| [usb-task-in-the-interrupt-only.md](usb-task-in-the-interrupt-only.md) | TinyUSB's task in the interrupt only |
+| [remove-lost-reply-recovery.md](remove-lost-reply-recovery.md) | Remove the recovery of lost replies |
 
 ## How to Write One
 

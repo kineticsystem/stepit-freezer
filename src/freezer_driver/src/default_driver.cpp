@@ -47,8 +47,6 @@ constexpr uint8_t kSetOutputsCommandId = 0x77;
 constexpr uint8_t kStopCommandId = 0x78;
 
 constexpr int kMaxConnectionTrials = 5;
-// The most late frames dropped before a request, after a failed read.
-constexpr int kMaxDroppedFrames = 8;
 
 constexpr auto kExpectedControllerName = "FREEZER";
 
@@ -110,7 +108,6 @@ DefaultDriver::DefaultDriver(std::unique_ptr<framed_serial::FramedSerial> framed
 bool DefaultDriver::connect()
 {
   framed_serial_->open();
-  late_reply_possible_ = false;
 
   // A controller that resets when the port opens, e.g. a Nano 3, answers only
   // once its bootloader gives up waiting for an upload: a frame sent meanwhile
@@ -124,9 +121,6 @@ bool DefaultDriver::connect()
   {
     try
     {
-      // Each attempt waits its own reply: no time is spent draining the
-      // frames a booting controller may have lost.
-      late_reply_possible_ = false;
       RCLCPP_INFO(kLogger, "Connecting (%d of %d)...", trial + 1, kMaxConnectionTrials);
       const InfoResponse response = get_info();
       if (!response.success())
@@ -167,42 +161,12 @@ void DefaultDriver::disconnect()
   framed_serial_->close();
 }
 
-std::vector<uint8_t> DefaultDriver::request(const std::vector<uint8_t>& in)
-{
-  if (late_reply_possible_)
-  {
-    // Bounded, in case the controller keeps sending.
-    for (int frame = 0; frame < kMaxDroppedFrames; ++frame)
-    {
-      try
-      {
-        const std::vector<uint8_t> late = framed_serial_->read();
-        RCLCPP_WARN(kLogger, "Dropped a late reply: %s", to_hex(late).c_str());
-      }
-      catch (const std::exception&)
-      {
-        break;
-      }
-    }
-    late_reply_possible_ = false;
-  }
-  framed_serial_->write(in);
-  try
-  {
-    return framed_serial_->read();
-  }
-  catch (const std::exception&)
-  {
-    late_reply_possible_ = true;
-    throw;
-  }
-}
-
 InfoResponse DefaultDriver::get_info()
 {
   const std::vector<uint8_t> in{ kInfoQueryId };
   RCLCPP_DEBUG(kLogger, "Info query: %s", to_hex(in).c_str());
-  const std::vector<uint8_t> out = request(in);
+  framed_serial_->write(in);
+  const std::vector<uint8_t> out = framed_serial_->read();
   RCLCPP_DEBUG(kLogger, "Info response: %s", to_hex(out).c_str());
 
   // The data array contains the following information.
@@ -233,7 +197,8 @@ LoadSequenceResponse DefaultDriver::load_sequence(const Sequence& sequence)
   const std::vector<uint8_t> payload = sequence.encode();
   in.insert(in.end(), payload.begin(), payload.end());
   RCLCPP_DEBUG(kLogger, "Load sequence command: %s", to_hex(in).c_str());
-  const std::vector<uint8_t> out = request(in);
+  framed_serial_->write(in);
+  const std::vector<uint8_t> out = framed_serial_->read();
   RCLCPP_DEBUG(kLogger, "Load sequence response: %s", to_hex(out).c_str());
 
   // status - 1 byte, duration - 4 bytes in µs.
@@ -252,7 +217,8 @@ ShootResponse DefaultDriver::shoot()
 {
   const std::vector<uint8_t> in{ kShootCommandId };
   RCLCPP_DEBUG(kLogger, "Shoot command: %s", to_hex(in).c_str());
-  const std::vector<uint8_t> out = request(in);
+  framed_serial_->write(in);
+  const std::vector<uint8_t> out = framed_serial_->read();
   RCLCPP_DEBUG(kLogger, "Shoot response: %s", to_hex(out).c_str());
 
   // status - 1 byte, shot id - 2 bytes, duration - 4 bytes in µs.
@@ -272,7 +238,8 @@ StatusResponse DefaultDriver::get_status()
 {
   const std::vector<uint8_t> in{ kStatusQueryId };
   RCLCPP_DEBUG(kLogger, "Status query: %s", to_hex(in).c_str());
-  const std::vector<uint8_t> out = request(in);
+  framed_serial_->write(in);
+  const std::vector<uint8_t> out = framed_serial_->read();
   RCLCPP_DEBUG(kLogger, "Status response: %s", to_hex(out).c_str());
 
   // status            - 1 byte
@@ -306,7 +273,8 @@ Response DefaultDriver::set_outputs(uint16_t outputs)
   const std::vector<uint8_t> in{ kSetOutputsCommandId, static_cast<uint8_t>(outputs >> 8),
                                  static_cast<uint8_t>(outputs & 0xFF) };
   RCLCPP_DEBUG(kLogger, "Set outputs command: %s", to_hex(in).c_str());
-  const std::vector<uint8_t> out = request(in);
+  framed_serial_->write(in);
+  const std::vector<uint8_t> out = framed_serial_->read();
   RCLCPP_DEBUG(kLogger, "Set outputs response: %s", to_hex(out).c_str());
   return read_header(out);
 }
@@ -315,7 +283,8 @@ Response DefaultDriver::stop()
 {
   const std::vector<uint8_t> in{ kStopCommandId };
   RCLCPP_DEBUG(kLogger, "Stop command: %s", to_hex(in).c_str());
-  const std::vector<uint8_t> out = request(in);
+  framed_serial_->write(in);
+  const std::vector<uint8_t> out = framed_serial_->read();
   RCLCPP_DEBUG(kLogger, "Stop response: %s", to_hex(out).c_str());
   return read_header(out);
 }

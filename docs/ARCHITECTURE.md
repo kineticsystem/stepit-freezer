@@ -36,7 +36,7 @@
 
 ## Introduction
 
-This document explains how StepIt Freezer is built: the board, the protocol, the firmware of the Nano and the ROS2 side, what each part is responsible for, and why it is built that way. It describes the code as it is, firmware version 2.1.0 and protocol version 2. It assumes we have read the [README](../README.md). [Brainstorming.md](design/Brainstorming.md) keeps the ideas we weighed on the way, including the ones we dropped.
+This document explains how StepIt Freezer is built: the board, the protocol, the firmware of the Nano and the ROS2 side, what each part is responsible for, and why it is built that way. It describes the code as it is, firmware version 2.1.1 and protocol version 2. It assumes we have read the [README](../README.md). [Brainstorming.md](design/Brainstorming.md) keeps the ideas we weighed on the way, including the ones we dropped.
 
 It follows one rule: **once a shot starts, its timing belongs to the controller, and only a stop interrupts it**. The host loads a table of steps, asks for a shot and is told at once that it has started; the Nano walks the table on a hardware timer, whatever else happens on the serial port; the host polls until the controller says the shot has ended.
 
@@ -132,7 +132,7 @@ The path of a serial port does not tell what is plugged in, so `DefaultDriver::c
 
 The driver accepts the controller only when the name is `FREEZER`, not another device on the wrong port, and its major version is the one the driver speaks, 2. The major version changes whenever the bytes on the wire change, so a driver never reads a controller it does not understand: flash the firmware of the same workspace. The node keeps the limits, and checks every table against them before sending it.
 
-**The controller starts again when the port opens.** The Nano R4 talks over its own USB, which a reset would drop, so its firmware starts again by itself when DTR rises: it stops a shot, switches every output off, forgets its table and its shot ids, and drops the bytes it had not sent, at once. The driver waits `connect_delay` after opening the port, 0 by default, for a controller that resets when the port opens, then tries `Info` up to 5 times, 100 ms apart. The node keeps the port open as long as the controller answers, because every reopen restarts the controller, which forgets its table and switches its outputs off.
+**The controller starts again when the port opens.** The Nano R4 talks over its own USB, which a reset would drop, so its firmware starts again by itself when DTR rises: it stops a shot, switches every output off, forgets its table and its shot ids, and drops the bytes it had not sent, at once. It reads DTR with TinyUSB's `tud_cdc_connected()`, which only reads the line state: the core runs TinyUSB's `tud_task()` in the USB interrupt, and `tud_task()` is not reentrant, so `loop()` must never run it too, or a request or a reply is lost now and then. The driver waits `connect_delay` after opening the port, 0 by default, for a controller that resets when the port opens, then tries `Info` up to 5 times, 100 ms apart. The node keeps the port open as long as the controller answers, because every reopen restarts the controller, which forgets its table and switches its outputs off.
 
 ## The Controller
 
@@ -215,7 +215,7 @@ After the port opens, the controller has started again and holds no table, so IN
 
 ### DefaultDriver
 
-The real controller, over a `FramedSerial`. It encodes the requests, decodes the responses, throws on a response it cannot read, e.g. a short one, and makes the handshake of [The Handshake](#the-handshake-and-the-version). A response carries no id of its request, so after a read that failed, e.g. timed out, the response may still come, and be taken for the answer to the next request: the next request first reads and drops what is left, until a read times out.
+The real controller, over a `FramedSerial`. It encodes the requests, decodes the responses, throws on a response it cannot read, e.g. a short one, and makes the handshake of [The Handshake](#the-handshake-and-the-version).
 
 ### FakeDriver
 
@@ -245,7 +245,6 @@ A raw table can still be sent, in the goal, for experiments.
 - **It loads only what changed.** The controller does not say which table it holds, so the runner remembers the sequence it loaded last, and loads a sequence only when it differs. It forgets it whenever the controller may have lost it.
 - **It polls for the end.** It sleeps `poll_period`, 10 ms, between two status queries, reports the step and the elapsed time at each, and succeeds when the controller is idle with the shot's id.
 - **It gives up on a shot that does not end** within its duration plus `end_margin`, 100 ms.
-- **It asks again when a status query goes unanswered,** and gives up only after `max_missed_status`, 3, in a row: the shot runs on the controller whatever the host hears, and one reply lost, e.g. to noise on the USB cable, must not fail a stack of pictures. The node warns of every shot that missed one.
 - **Callbacks** let its caller cancel the shot before it is fired, and learn when it has started and how it progresses.
 
 ### FreezerNode
