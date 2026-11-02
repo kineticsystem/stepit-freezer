@@ -63,6 +63,10 @@ public:
     std::chrono::microseconds poll_period{ 10'000 };
     // Time after the duration of a shot before giving up on it.
     std::chrono::microseconds end_margin{ 100'000 };
+    // Status queries in a row that may go unanswered, e.g. a reply lost to
+    // noise on the USB cable, before the shot is given up. The shot runs on
+    // the controller whatever the host hears.
+    int max_missed_status = 3;
   };
 
   /** What the runner tells its caller while a shot runs. */
@@ -92,6 +96,8 @@ public:
     uint16_t shot_id = 0;
     uint32_t duration_us = 0;
     uint32_t worst_lateness_us = 0;
+    // Status queries that went unanswered during the shot.
+    int missed_status = 0;
   };
 
   /**

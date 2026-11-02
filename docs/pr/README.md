@@ -8,6 +8,7 @@ Each pull request has a notes file here. It keeps what the pull request does not
 |---|---|
 | [016-nano-r4.md](016-nano-r4.md) | [#16](https://github.com/kineticsystem/stepit-freezer/pull/16) The Arduino Nano R4 |
 | [017-mermaid-diagrams.md](017-mermaid-diagrams.md) | [#17](https://github.com/kineticsystem/stepit-freezer/pull/17) Diagrams as SVG images, from Mermaid sources |
+| [018-tolerate-a-lost-reply.md](018-tolerate-a-lost-reply.md) | [#18](https://github.com/kineticsystem/stepit-freezer/pull/18) Tolerate a lost reply |
 
 ## How to Write One
 

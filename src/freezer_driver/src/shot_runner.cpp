@@ -97,10 +97,28 @@ ShotRunner::Result ShotRunner::run(const Sequence& sequence, const Callbacks& ca
     callbacks.started(shot.shot_id, shot.duration_us);
 
     const auto deadline = clock_() + std::chrono::microseconds{ shot.duration_us } + config_.end_margin;
+    int missed_in_a_row = 0;
     while (true)
     {
       sleep_(config_.poll_period);
-      const StatusResponse status = driver_.get_status();
+      StatusResponse status;
+      try
+      {
+        status = driver_.get_status();
+        missed_in_a_row = 0;
+      }
+      catch (const std::exception& ex)
+      {
+        // One lost reply must not fail a shot the controller is running
+        // well: ask again, up to the limit.
+        ++result.missed_status;
+        if (++missed_in_a_row >= config_.max_missed_status)
+        {
+          throw std::runtime_error("The controller did not answer " + std::to_string(missed_in_a_row) +
+                                   " status queries in a row: " + ex.what());
+        }
+        continue;
+      }
       if (!status.success())
       {
         throw std::runtime_error("The controller refused the status query: " + to_string(status.reason()) + ".");
