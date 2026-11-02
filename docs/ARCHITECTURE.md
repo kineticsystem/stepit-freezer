@@ -215,7 +215,7 @@ After the port opens, the controller has started again and holds no table, so IN
 
 ### DefaultDriver
 
-The real controller, over a `FramedSerial`. It encodes the requests, decodes the responses, throws on a response it cannot read, e.g. a short one, and makes the handshake of [The Handshake](#the-handshake-and-the-version). A response carries no id of its request, so after a read that failed, e.g. timed out, the response may still come, and be taken for the answer to the next request: the next request first reads and drops what is left, until a read times out.
+The real controller, over a `FramedSerial`. It encodes the requests, decodes the responses, throws on a response it cannot read, e.g. a short one, and makes the handshake of [The Handshake](#the-handshake-and-the-version).
 
 ### FakeDriver
 
@@ -245,7 +245,6 @@ A raw table can still be sent, in the goal, for experiments.
 - **It loads only what changed.** The controller does not say which table it holds, so the runner remembers the sequence it loaded last, and loads a sequence only when it differs. It forgets it whenever the controller may have lost it.
 - **It polls for the end.** It sleeps `poll_period`, 10 ms, between two status queries, reports the step and the elapsed time at each, and succeeds when the controller is idle with the shot's id.
 - **It gives up on a shot that does not end** within its duration plus `end_margin`, 100 ms.
-- **It asks again when a status query goes unanswered,** and gives up only after `max_missed_status`, 3, in a row: the shot runs on the controller whatever the host hears, and one reply lost, e.g. to noise on the USB cable, must not fail a stack of pictures. The node warns of every shot that missed one.
 - **Callbacks** let its caller cancel the shot before it is fired, and learn when it has started and how it progresses.
 
 ### FreezerNode
