@@ -376,12 +376,9 @@ void updateTrigger()
  * the bytes meant for the host before it are dropped. A reset would do the
  * same, but it would also drop the USB port the host has just opened.
  *
- * DTR is read from TinyUSB, never with `if (Serial)`: the core's operator
- * bool runs tud_task(), which the core already runs in the USB interrupt.
- * tud_task() is not reentrant, and an interrupt that came while loop() was
- * inside it lost a request or a reply now and then: on the rig, firmware
- * 2.1.0 left 4 status queries in 30000 unanswered with no shot running, and
- * 12 in about 22000 during shots that switched nothing; 2.1.1, none.
+ * tud_cdc_connected() only reads the line state. The core runs TinyUSB's
+ * tud_task() in the USB interrupt, and tud_task() is not reentrant: loop()
+ * must never run it too, or a request or a reply is lost now and then.
  */
 void updateHost()
 {
