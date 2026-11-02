@@ -97,7 +97,7 @@ A desktop grants the device to the user who is logged in, so a PC needs no rule.
 
 We develop the firmware with Visual Studio Code and the [PlatformIO](https://platformio.org) extension. Installing the Arduino IDE is not required.
 
-The firmware, version 2.1.0, answers `Info`, `Echo`, `LoadSequence`, `Shoot`, `Status`, `SetOutputs` and `Stop`, and fires the loaded sequence when IN1 is pressed, unless a shot is running or no sequence is loaded. A hardware timer runs the shot: each step starts at its own time, within 2 to 3 µs, as measured. A step must last at least 40 µs, the limit of the Nano 3 the board had before, which the Nano R4 keeps until it is measured there. The driver refuses a firmware of another major version, e.g. 1.1.0: flash the firmware of the same workspace.
+The firmware, version 2.1.1, answers `Info`, `Echo`, `LoadSequence`, `Shoot`, `Status`, `SetOutputs` and `Stop`, and fires the loaded sequence when IN1 is pressed, unless a shot is running or no sequence is loaded. A hardware timer runs the shot: each step starts at its own time, within 2 to 3 µs, as measured. A step must last at least 40 µs, the limit of the Nano 3 the board had before, which the Nano R4 keeps until it is measured there. The driver refuses a firmware of another major version, e.g. 1.1.0: flash the firmware of the same workspace.
 
 To flash the microcontroller code into the Nano:
 

@@ -26,6 +26,8 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
+#include <tusb.h>
+
 #include "SerialPort.h"
 #include "DataBuffer.h"
 #include "Sequencer.h"
@@ -49,7 +51,7 @@ constexpr char NAME[] = "FREEZER";
 
 constexpr byte VERSION_MAJOR = 2;
 constexpr byte VERSION_MINOR = 1;
-constexpr byte VERSION_PATCH = 0;
+constexpr byte VERSION_PATCH = 1;
 
 // Limits of a sequence, reported to the host at the handshake. The host is
 // expected to reject a sequence beyond them before sending it.
@@ -373,11 +375,18 @@ void updateTrigger()
  * rises: a host that opens the port finds every output off and no table, and
  * the bytes meant for the host before it are dropped. A reset would do the
  * same, but it would also drop the USB port the host has just opened.
+ *
+ * DTR is read from TinyUSB, never with `if (Serial)`: the core's operator
+ * bool runs tud_task(), which the core already runs in the USB interrupt.
+ * tud_task() is not reentrant, and an interrupt that came while loop() was
+ * inside it lost a request or a reply now and then: on the rig, firmware
+ * 2.1.0 left 4 status queries in 30000 unanswered with no shot running, and
+ * 12 in about 22000 during shots that switched nothing; 2.1.1, none.
  */
 void updateHost()
 {
   static bool connected = false;
-  const bool now = static_cast<bool>(Serial);
+  const bool now = tud_cdc_connected();
   if (now && !connected)
   {
     sequencer::reset();

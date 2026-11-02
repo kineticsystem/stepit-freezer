@@ -36,7 +36,7 @@
 
 ## Introduction
 
-This document explains how StepIt Freezer is built: the board, the protocol, the firmware of the Nano and the ROS2 side, what each part is responsible for, and why it is built that way. It describes the code as it is, firmware version 2.1.0 and protocol version 2. It assumes we have read the [README](../README.md). [Brainstorming.md](design/Brainstorming.md) keeps the ideas we weighed on the way, including the ones we dropped.
+This document explains how StepIt Freezer is built: the board, the protocol, the firmware of the Nano and the ROS2 side, what each part is responsible for, and why it is built that way. It describes the code as it is, firmware version 2.1.1 and protocol version 2. It assumes we have read the [README](../README.md). [Brainstorming.md](design/Brainstorming.md) keeps the ideas we weighed on the way, including the ones we dropped.
 
 It follows one rule: **once a shot starts, its timing belongs to the controller, and only a stop interrupts it**. The host loads a table of steps, asks for a shot and is told at once that it has started; the Nano walks the table on a hardware timer, whatever else happens on the serial port; the host polls until the controller says the shot has ended.
 
@@ -132,7 +132,7 @@ The path of a serial port does not tell what is plugged in, so `DefaultDriver::c
 
 The driver accepts the controller only when the name is `FREEZER`, not another device on the wrong port, and its major version is the one the driver speaks, 2. The major version changes whenever the bytes on the wire change, so a driver never reads a controller it does not understand: flash the firmware of the same workspace. The node keeps the limits, and checks every table against them before sending it.
 
-**The controller starts again when the port opens.** The Nano R4 talks over its own USB, which a reset would drop, so its firmware starts again by itself when DTR rises: it stops a shot, switches every output off, forgets its table and its shot ids, and drops the bytes it had not sent, at once. The driver waits `connect_delay` after opening the port, 0 by default, for a controller that resets when the port opens, then tries `Info` up to 5 times, 100 ms apart. The node keeps the port open as long as the controller answers, because every reopen restarts the controller, which forgets its table and switches its outputs off.
+**The controller starts again when the port opens.** The Nano R4 talks over its own USB, which a reset would drop, so its firmware starts again by itself when DTR rises: it stops a shot, switches every output off, forgets its table and its shot ids, and drops the bytes it had not sent, at once. It reads DTR with TinyUSB's `tud_cdc_connected()`, never with `if (Serial)`: the core's `operator bool` runs `tud_task()`, which the core already runs in the USB interrupt, and the two together lost about one request or reply in 2000 during a shot (firmware 2.1.0). The driver waits `connect_delay` after opening the port, 0 by default, for a controller that resets when the port opens, then tries `Info` up to 5 times, 100 ms apart. The node keeps the port open as long as the controller answers, because every reopen restarts the controller, which forgets its table and switches its outputs off.
 
 ## The Controller
 
