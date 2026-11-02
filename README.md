@@ -336,7 +336,7 @@ Each sequence has a `recipe` and the parameters of that recipe, in milliseconds.
 
 **Every shot is rejected, and the log says `Every shot is rejected until it answers` or `The Freezer controller stopped answering`.** The Nano is unplugged, or the computer did not see it, as a Raspberry Pi sometimes does at boot. Plug it in again: the node tries to connect every `reconnect_period`, 2 s, and logs `The Freezer controller is back`, with no restart. `/freezer/status` tells the error of the last try.
 
-**The log says `the controller left 1 status queries unanswered`, or `missed_status` is not 0.** The shot succeeded, because the node asked again, but a healthy controller leaves none: something loses requests or replies. Firmware 2.1.0 lost about one in 2000 during a shot, a fault of the firmware fixed in 2.1.1: flash the firmware of this workspace. With 2.1.1, look at the USB cable and what runs next to it.
+**The log says `the controller left 1 status queries unanswered`, or `missed_status` is not 0.** The node asked again, and the shot succeeded unless `max_missed_status` were missed in a row, but a healthy controller leaves none: something loses requests or replies. Firmware 2.1.0 lost about one in 2000 during a shot, a fault of the firmware fixed in 2.1.1: flash the firmware of this workspace. With 2.1.1, look at the USB cable and what runs next to it.
 
 **`Permission denied` when opening `/dev/ttyACM0`.** Our user is not in the group `dialout`, or we have not logged in again since joining it. See [Access the Serial Port](#access-the-serial-port).
 

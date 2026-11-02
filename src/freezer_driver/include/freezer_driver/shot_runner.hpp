@@ -96,8 +96,8 @@ public:
     uint16_t shot_id = 0;
     uint32_t duration_us = 0;
     uint32_t worst_lateness_us = 0;
-    // Status queries that went unanswered during the shot.
-    int missed_status = 0;
+    // Status queries that went unanswered during the shot, asked again or not.
+    uint32_t missed_status = 0;
   };
 
   /**

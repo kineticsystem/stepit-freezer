@@ -94,7 +94,6 @@ ShootResponse FakeDriver::shoot()
   }
 
   start();
-  lost_status_reply_ = false;
   ShootResponse response{ Response::Status::Success };
   response.shot_id = last_shot_id_;
   response.duration_us = static_cast<uint32_t>(loaded_->duration_us());
@@ -233,6 +232,7 @@ void FakeDriver::reset()
 void FakeDriver::start()
 {
   running_ = true;
+  lost_status_reply_ = false;
   start_ = clock_();
   last_shot_id_ = next_shot_id_;
   next_shot_id_ = static_cast<uint16_t>(next_shot_id_ == 0xFFFF ? 1 : next_shot_id_ + 1);

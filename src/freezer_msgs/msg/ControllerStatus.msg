@@ -16,6 +16,6 @@ string device
 string message
 
 # Status queries the controller left unanswered during the shots since the
-# node started, asked again. A healthy controller leaves none: more than 0 is
-# a fault to look into, e.g. its firmware or its USB cable.
+# node started, whether the shots succeeded or not. A healthy controller leaves
+# none: more than 0 is a fault to look into, e.g. its firmware or its USB cable.
 uint32 missed_status

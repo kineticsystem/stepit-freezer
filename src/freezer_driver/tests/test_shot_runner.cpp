@@ -240,7 +240,7 @@ TEST_F(TestShotRunner, lost_status_replies_are_asked_again)
   auto lossy_shots = lossy_runner(lossy, now);
   const auto result = lossy_shots.run(sequence);
   EXPECT_EQ(result.outcome, Outcome::Succeeded) << result.message;
-  EXPECT_EQ(result.missed_status, 3);
+  EXPECT_EQ(result.missed_status, 3u);
   EXPECT_EQ(now, microseconds{ 10'000 });
 }
 
@@ -251,7 +251,7 @@ TEST_F(TestShotRunner, the_last_status_reply_lost)
   auto lossy_shots = lossy_runner(lossy, now);
   const auto result = lossy_shots.run(sequence);
   EXPECT_EQ(result.outcome, Outcome::Succeeded) << result.message;
-  EXPECT_EQ(result.missed_status, 1);
+  EXPECT_EQ(result.missed_status, 1u);
 }
 
 /** Three replies lost in a row: the controller is gone, the shot fails. */

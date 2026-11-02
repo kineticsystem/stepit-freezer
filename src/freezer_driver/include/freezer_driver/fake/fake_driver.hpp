@@ -59,7 +59,7 @@ public:
     None,
     NeverFinish,      // The shot never ends, as if the controller hung.
     ResetDuringShot,  // The controller resets at the first status query of a shot.
-    LoseStatusReply,  // The first status query of each shot goes unanswered: it throws, as on a timeout.
+    LoseStatusReply,  // The first status query of each shot, of a goal or of IN1, throws, as on a timeout.
   };
 
   /** A pattern and when it was latched. */

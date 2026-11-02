@@ -472,8 +472,9 @@ TEST_F(TestFreezerNode, a_lost_status_reply_is_reported)
       });
   executor.add_node(listener);
 
+  // Long enough for the first status query to come while the shot runs.
   fake->set_failure(FakeDriver::Failure::LoseStatusReply);
-  auto handle = send(raw_goal({ { 0x0003, 1'000 }, { 0x0000, 2'000 } }));
+  auto handle = send(raw_goal({ { 0x0003, 20'000 }, { 0x0000, 30'000 } }));
   ASSERT_TRUE(handle);
   const auto wrapped = result(handle);
   ASSERT_EQ(wrapped.code, ResultCode::SUCCEEDED) << wrapped.result->message;
@@ -491,7 +492,7 @@ TEST_F(TestFreezerNode, a_lost_status_reply_is_reported)
   }));
 
   // The count adds up over the shots.
-  ASSERT_EQ(result(send(raw_goal({ { 0x0003, 1'000 }, { 0x0000, 2'000 } }))).code, ResultCode::SUCCEEDED);
+  ASSERT_EQ(result(send(raw_goal({ { 0x0003, 20'000 }, { 0x0000, 30'000 } }))).code, ResultCode::SUCCEEDED);
   EXPECT_TRUE(wait_until([&] {
     std::lock_guard lock{ mutex };
     return missed_since_start == 2u;

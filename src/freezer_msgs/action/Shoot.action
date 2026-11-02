@@ -29,10 +29,11 @@ uint32 duration_us
 # The latest a step boundary came after its time, as measured by the controller.
 uint32 worst_lateness_us
 
-# Status queries the controller left unanswered during the shot, asked again.
-# A healthy controller leaves none: more than 0 is a fault to look into, e.g.
-# its firmware or its USB cable, even though the shot succeeded.
-uint16 missed_status
+# Status queries the controller left unanswered during the shot. The node asks
+# again, so a shot that missed fewer than max_missed_status in a row still
+# succeeds. A healthy controller leaves none: more than 0 is a fault to look
+# into, e.g. its firmware or its USB cable, whatever the outcome.
+uint32 missed_status
 
 ---
 
