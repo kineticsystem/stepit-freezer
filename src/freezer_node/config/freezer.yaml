@@ -10,6 +10,7 @@ freezer:
     reconnect_period: 2.0 # s, between tries while there is no controller; 0 tries once
     poll_period: 0.01     # s
     end_margin: 0.1       # s, after the duration, before giving up
+    max_missed_status: 3  # status queries in a row unanswered during a shot, before giving up
     default_sequence: flash_shot
     sequence_names: [flash_shot, timed_light]
     sequences:

@@ -314,6 +314,7 @@ ros2 launch freezer_node freezer.launch.py params_file:=/path/to/robot.yaml
 | `reconnect_period` | `2.0` | Seconds between two tries to connect while there is no controller: a Nano missing at start, or unplugged, is connected once it is plugged in. 0 tries once, at start. |
 | `poll_period` | `0.01` | Seconds between two status queries during a shot. |
 | `end_margin` | `0.1` | Seconds after the duration of a shot before the node gives up on it. |
+| `max_missed_status` | `3` | Status queries in a row that may go unanswered during a shot before the node gives up on it. A shot that missed some succeeds, with a warning. |
 | `watch_period` | `0.2` | Seconds between two status queries while no goal runs, to see the shots of the remote trigger. 0 stops the queries. |
 | `default_sequence` | `flash_shot` | The sequence of a goal that names none. |
 | `sequence_names` | `[flash_shot, timed_light]` | The sequences under `sequences`. A ROS2 node must declare a parameter before reading it, and these names tell it which to declare. |

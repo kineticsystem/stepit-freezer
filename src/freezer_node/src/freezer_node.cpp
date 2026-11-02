@@ -99,6 +99,7 @@ FreezerNode::FreezerNode(const rclcpp::NodeOptions& options, std::unique_ptr<fre
   declare_parameter<double>("reconnect_period", 2.0);
   declare_parameter<double>("poll_period", 0.01);
   declare_parameter<double>("end_margin", 0.1);
+  declare_parameter<int>("max_missed_status", 3);
   declare_parameter<double>("watch_period", 0.2);
   declare_parameter<std::string>("default_sequence", "flash_shot");
   declare_parameter<std::vector<std::string>>("sequence_names", { "flash_shot" });
@@ -125,10 +126,11 @@ FreezerNode::FreezerNode(const rclcpp::NodeOptions& options, std::unique_ptr<fre
   // The Nano resets when the port opens: every output is off.
   publish_outputs(0);
 
-  // poll_period and end_margin are read here, once.
+  // poll_period, end_margin and max_missed_status are read here, once.
   const freezer_driver::ShotRunner::Config config{
     std::chrono::duration_cast<std::chrono::microseconds>(seconds(get_parameter("poll_period").as_double())),
     std::chrono::duration_cast<std::chrono::microseconds>(seconds(get_parameter("end_margin").as_double())),
+    static_cast<int>(get_parameter("max_missed_status").as_int()),
   };
   runner_ = std::make_unique<freezer_driver::ShotRunner>(
       *driver_, config,
@@ -592,6 +594,12 @@ void FreezerNode::execute(const std::shared_ptr<GoalHandle>& goal_handle)
     {
       publish_outputs(0);
     }
+  }
+
+  if (shot.missed_status > 0)
+  {
+    RCLCPP_WARN(get_logger(), "Shot %u: the controller left %d status queries unanswered.", shot.shot_id,
+                shot.missed_status);
   }
 
   result->message = shot.message;
