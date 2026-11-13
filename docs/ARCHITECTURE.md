@@ -67,7 +67,7 @@ The node's interface:
 | `freezer_msgs` | The `Shoot` action, the `Step`, `Outputs` and `Shot` messages, and the `SetOutputs` service. No code. |
 | `freezer_driver` | The host side of the protocol, with no ROS interface: the `Driver` interface and its implementations, the sequence and its rules, the recipes, and `ShotRunner`. Its tests are in its `tests` folder. |
 | `freezer_node` | The node `freezer`, its parameters and its launch file, which also starts the board page and its rosbridge, and its test. |
-| `framed_serial`, `serial` | The framed serial protocol and the serial port, libraries in submodules under `modules`. |
+| `framed_serial`, `serial` | The framed serial protocol and the serial port, libraries pinned in `freezer.repos` and imported into `modules` by `bin/update.sh`. |
 | `freezer_mcu` | The firmware of the Nano, a PlatformIO project in `src/freezer_mcu`, not built by colcon. |
 | `web` | The board page, in React and TypeScript, built with Vite and pnpm by the scripts in `bin`, not by colcon. |
 

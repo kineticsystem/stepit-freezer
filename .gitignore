@@ -24,3 +24,6 @@ backup/
 node_modules
 web/dist
 .pnpm-store/
+
+# The libraries of freezer.repos, which bin/update.sh imports with vcs.
+/modules/

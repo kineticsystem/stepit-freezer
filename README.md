@@ -15,7 +15,7 @@
   - [Access the Serial Port](#access-the-serial-port)
   - [Flash the Firmware](#flash-the-firmware)
 - [Install StepIt Freezer on the Local Computer](#install-stepit-freezer-on-the-local-computer)
-  - [Check out the Submodules](#check-out-the-submodules)
+  - [Check out the Git Repository](#check-out-the-git-repository)
   - [Pre-Commit Hooks](#pre-commit-hooks)
   - [Build the Project](#build-the-project)
 - [Running the Application](#running-the-application)
@@ -128,25 +128,15 @@ The Nano R4 does not reset when its port is opened: it talks over its own USB, a
 
 ## Install StepIt Freezer on the Local Computer
 
-### Check out the Submodules
+### Check out the Git Repository
 
-The packages `framed_serial` and `serial` are git submodules, in `modules/framed-serial` and `modules/serial`. Clone the repository with its submodules:
-
-```
-git clone --recurse-submodules git@github.com:kineticsystem/stepit-freezer.git
-```
-
-If you missed the switch `--recurse-submodules`, fetch them with the following command:
+Check out this git repository:
 
 ```
-git submodule update --init --recursive
+git clone git@github.com:kineticsystem/stepit-freezer.git
 ```
 
-Remember to enable recursion for relevant git commands, such that regular commands recurse into submodules by default.
-
-```
-git config --global submodule.recurse true
-```
+The packages build on two libraries, `framed_serial` and `serial`, which are not part of the repository: [`freezer.repos`](freezer.repos) lists them, each at the commit StepIt Freezer is built and tested with. `bin/update.sh`, `update` in the container, imports them with `vcs` into `modules/framed-serial` and `modules/serial`, in a folder git ignores, before it installs the dependencies with rosdep: run it before the first build. Run it again after a change to `freezer.repos`: each library moves to its new commit, and keeps any local change.
 
 ### Pre-Commit Hooks
 
@@ -203,8 +193,8 @@ The packages are the following.
 | `freezer_msgs` | the `Shoot` action, the `Step`, `Outputs` and `Shot` messages, and the `SetOutputs` service |
 | `freezer_driver` | the `Driver` interface, `DefaultDriver` over the serial port, `FakeDriver`, the sequence rules, the recipes, and `ShotRunner`, which runs one shot on a driver |
 | `freezer_node` | the node `freezer`: the `Shoot` action server, the services `set_outputs` and `stop`, the topics `outputs` and `shots`, its parameters and its launch file |
-| `framed_serial` | the framed serial protocol, in the submodule `modules/framed-serial`, from [framed-serial](https://github.com/kineticsystem/framed-serial) |
-| `serial` | the serial port library, in the submodule `modules/serial`, from [serial](https://github.com/kineticsystem/serial), branch `ros2` |
+| `framed_serial` | the framed serial protocol, imported into `modules/framed-serial` from [framed-serial](https://github.com/kineticsystem/framed-serial) |
+| `serial` | the serial port library, imported into `modules/serial` from [serial](https://github.com/kineticsystem/serial) |
 | `freezer_mcu` | the PlatformIO project of the Nano, in `src/freezer_mcu`, not built by colcon |
 | `web` | the board page, in React and TypeScript, built with Vite and pnpm, not built by colcon |
 
@@ -347,7 +337,7 @@ At each push and pull request, the GitHub repository runs three workflows:
 | [`ci-format.yml`](.github/workflows/ci-format.yml) | runs the pre-commit hooks on every file, except the ament linters |
 | [`ci-ros-lint.yml`](.github/workflows/ci-ros-lint.yml) | runs `ament_copyright`, `ament_lint_cmake` and `ament_cpplint` on `freezer_driver`, `freezer_msgs` and `freezer_node` |
 
-The checkout of `industrial_ci` does not fetch the submodules: it builds `framed_serial` and `serial` from the repositories listed in [`freezer.repos`](freezer.repos). A new submodule must be added there too. The firmware, `freezer_mcu`, is not built by CI.
+`industrial_ci` builds `framed_serial` and `serial` from the repositories listed in [`freezer.repos`](freezer.repos), at the commits a local build uses. The firmware, `freezer_mcu`, is not built by CI.
 
 Sometimes, it may be desirable to execute the Continuous Integration pipeline locally. This is possible by using [Nektos](https://github.com/nektos/act).
 
