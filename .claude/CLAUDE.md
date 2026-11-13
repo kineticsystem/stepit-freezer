@@ -20,7 +20,7 @@ ros2 launch freezer_node freezer.launch.py                                  # fa
 ros2 launch freezer_node freezer.launch.py use_fake:=false usb_port:=/dev/ttyACM0
 ```
 
-One test package: `colcon test --packages-select freezer_driver --return-code-on-test-failure`. The firmware is a PlatformIO project for the Nano R4, `src/freezer_mcu`, not built by colcon: `pio run --target upload --upload-port /dev/ttyACM0` flashes it over DFU, which needs the udev rule `src/freezer_mcu/udev/60-arduino-nano-r4.rules` on a host without a desktop. The Nano 3 the board had before is no longer supported; its firmware is at the tag `nano3-2.0.0`. The submodules `serial` and `framed-serial` must be present: `git submodule update --init --recursive`.
+One test package: `colcon test --packages-select freezer_driver --return-code-on-test-failure`. The firmware is a PlatformIO project for the Nano R4, `src/freezer_mcu`, not built by colcon: `pio run --target upload --upload-port /dev/ttyACM0` flashes it over DFU, which needs the udev rule `src/freezer_mcu/udev/60-arduino-nano-r4.rules` on a host without a desktop. The Nano 3 the board had before is no longer supported; its firmware is at the tag `nano3-2.0.0`. The libraries `serial` and `framed-serial` must be present in `modules/`: `bin/update.sh` imports them from `freezer.repos` with `vcs`.
 
 ## Architecture
 
@@ -33,7 +33,7 @@ It follows one rule: **once a shot starts, its timing belongs to the controller,
 | `freezer_node` | The node `freezer`, its parameters, its launch file (which also starts the board page and its rosbridge), and its test. |
 | `freezer_mcu` | The firmware of the Nano R4. |
 | `web` | The board page, React and TypeScript with Vite and pnpm, not a ROS package (`web/COLCON_IGNORE`). |
-| `modules/framed-serial`, `modules/serial` | The framed, CRC-checked protocol and the serial port. `framed-serial` is shared with StepIt Motors; a rig that builds both needs them at the same commit. |
+| `modules/framed-serial`, `modules/serial` | The framed, CRC-checked protocol and the serial port, pinned in `freezer.repos`, imported by `bin/update.sh`, ignored by git. `framed-serial` is shared with StepIt Motors; StepIt Macro fails to build when the two `.repos` files pin different commits. |
 
 Easy to break, see **Safety Nets** in the architecture document:
 
