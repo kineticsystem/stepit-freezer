@@ -1,6 +1,6 @@
 # Libraries from `freezer.repos`, Not Submodules
 
-Branch `ros2-workspace`.
+Pull request [#23](https://github.com/kineticsystem/stepit-freezer/pull/23), branch `ros2-workspace`.
 
 ## Goal
 
