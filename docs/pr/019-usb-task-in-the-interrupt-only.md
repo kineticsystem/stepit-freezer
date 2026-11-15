@@ -1,6 +1,6 @@
 # TinyUSB's Task in the Interrupt Only
 
-Branch `usb-task-in-the-interrupt-only`.
+Pull request [#19](https://github.com/kineticsystem/stepit-freezer/pull/19), branch `usb-task-in-the-interrupt-only`.
 
 ## Goal
 

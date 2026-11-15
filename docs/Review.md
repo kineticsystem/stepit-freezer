@@ -140,7 +140,7 @@ What is not sound is the end of the shot's thread: it calls the action server wi
 
 ### The Choice
 
-**One request, one response, and no recovery.** On 2026-11-02, the pull request [Remove the Recovery of Lost Replies](pr/remove-lost-reply-recovery.md) took out what [#18](pr/018-tolerate-a-lost-reply.md) had added, asking again and dropping late replies, because firmware 2.1.1 fixed the cause of the lost replies: "if replies go missing again, a new test will find why". So `ShotRunner::run()` ends the goal on the first query that fails, and `DefaultDriver` reads the next frame as the answer to its request, whatever it is.
+**One request, one response, and no recovery.** On 2026-11-02, the pull request [Remove the Recovery of Lost Replies](pr/021-remove-lost-reply-recovery.md) took out what [#18](pr/018-tolerate-a-lost-reply.md) had added, asking again and dropping late replies, because firmware 2.1.1 fixed the cause of the lost replies: "if replies go missing again, a new test will find why". So `ShotRunner::run()` ends the goal on the first query that fails, and `DefaultDriver` reads the next frame as the answer to its request, whatever it is.
 
 **Judged: the first half is sound, the second is not finished.** Not asking again is right: a `Shoot` asked twice can fire twice. Not dropping what is waiting is different: it is not a recovery, it is what keeps the sentence of [The Protocol](ARCHITECTURE.md#the-protocol) true, "a frame the host did not ask for can never be mistaken for the answer to its next request". Without it, one late reply puts the host one reply behind, and the host has no way back. USB makes the cause rare, since the bus checks and retries every packet; the price, when it happens, is every shot.
 

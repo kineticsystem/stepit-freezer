@@ -48,7 +48,7 @@ StepIt Freezer runs with a fake controller by default, so we do not need the boa
 
 ## Install StepIt Freezer on the Microcontroller
 
-This step is only required if you use a real hardware.
+This step is only required if you use real hardware.
 
 ### Connect the Arduino Nano
 
@@ -58,7 +58,7 @@ Connect the Nano to the computer and check that Linux sees it. Run the following
 journalctl -kf
 ```
 
-A working connection prints the following lines; the port is the last word, usually `ttyACM0`.
+A working connection prints the following lines; the port is in the last one, usually `ttyACM0`.
 
 ```
 usb 3-2: New USB device found, idVendor=2341, idProduct=0074, bcdDevice= 1.00
@@ -190,9 +190,9 @@ The packages are the following.
 
 | Package | Role |
 |---|---|
-| `freezer_msgs` | the `Shoot` action, the `Step`, `Outputs` and `Shot` messages, and the `SetOutputs` service |
-| `freezer_driver` | the `Driver` interface, `DefaultDriver` over the serial port, `FakeDriver`, the sequence rules, the recipes, and `ShotRunner`, which runs one shot on a driver |
-| `freezer_node` | the node `freezer`: the `Shoot` action server, the services `set_outputs` and `stop`, the topics `outputs` and `shots`, its parameters and its launch file |
+| `freezer_msgs` | the `Shoot` action, the `Step`, `Outputs`, `Shot` and `ControllerStatus` messages, and the `SetOutputs` service |
+| `freezer_driver` | the `Driver` interface, `DefaultDriver` over the serial port, `FakeDriver`, `SynchronizedDriver`, which lets one call at a time reach a driver, the sequence rules, the recipes, and `ShotRunner`, which runs one shot on a driver |
+| `freezer_node` | the node `freezer`: the `Shoot` action server, the services `set_outputs`, `stop` and `fake/press_trigger`, the topics `outputs`, `shots` and `status`, its parameters and its launch file |
 | `framed_serial` | the framed serial protocol, imported into `modules/framed-serial` from [framed-serial](https://github.com/kineticsystem/framed-serial) |
 | `serial` | the serial port library, imported into `modules/serial` from [serial](https://github.com/kineticsystem/serial) |
 | `freezer_mcu` | the PlatformIO project of the Nano, in `src/freezer_mcu`, not built by colcon |
@@ -278,7 +278,7 @@ The launch file also serves the board page, on [http://localhost:8092](http://lo
 - **The commands.** Pick one of the node's sequences, listed as example 1, example 2 and so on, in the order of `sequence_names` with the default one first, and send it, stop a shot, switch every output on or off, or press IN1 of the fake controller. Press IN1 is disabled against the board, whose IN1 only a hand can press: close the jack, e.g. with the remote. All on closes every line of every jack until All off, a stop or a shot: a camera plugged in focuses and holds its shutter open meanwhile.
 - **The lines and the latest shot.** A row per line of each jack, with an LED lit while the line is closed now, by a shot or by All on, as the node last told it, and the timing of the latest shot. During a shot, the LEDs follow its table at the cursor, so they always agree with the timing; a shot ends with every output off, so the LEDs of All on go out at the end of a shot. Before the first shot, the rows show all 16 lines and their LEDs only; with a shot, the lines it uses and any line on. Of the latest shot, the page shows its timing, and why it failed if it did; a stopped shot is cut where it stopped. A page that opens shows the last shot the node told of. A shot whose end never reaches the page, e.g. after a lost connection, stops counting as running two seconds after its duration, so that the commands are not kept disabled. It is drawn from the shot's table, which the controller runs exactly: the times are the table's, to the microsecond, not those at which the messages reached the page. Hover over it to read the time and the step. A row is a line of a jack, named after the contact of the plug it closes, e.g. `OUT8 tip` and `OUT8 ring`: all jacks are alike, and only the sequence decides what each drives. For a camera, the ring is the focus and the tip the shutter; a flash or a light closes both.
 
-`build` builds the page into `web/dist`; the launch file serves nothing until it is built. To run the page without them, set `web:=false`. To work on the page, with hot reload, run its development server on port 5175 next to the launched node:
+`build` builds the page into `web/dist`; until it is built, the launch file serves no page, only the rosbridge. To run the node without the page and its rosbridge, set `web:=false`. To work on the page, with hot reload, run its development server on port 5175 next to the launched node. The page it serves does not connect to the rosbridge today, see [Review.md](docs/Review.md#implementation-issues): check a change on the built page.
 
 ```
 cd ~/ws/web && pnpm dev
@@ -288,7 +288,7 @@ The page connects to `ws://<host>:9092`, where `<host>` is the machine that serv
 
 ### Parameters
 
-The parameters are in [`config/freezer.yaml`](src/freezer_node/config/freezer.yaml). To change them without editing it, e.g. from a robot that runs the Freezer, give a parameter file of our own, with a section `freezer`, in the launch argument `params_file`: it is loaded after `freezer.yaml`. The launch arguments `use_fake` and `usb_port` are applied last, and win over both files.
+The parameters are in [`config/freezer.yaml`](src/freezer_node/config/freezer.yaml), except `watch_period`, which keeps the default of the node. To change them without editing it, e.g. from a robot that runs the Freezer, give a parameter file of our own, with a section `freezer`, in the launch argument `params_file`: it is loaded after `freezer.yaml`. The launch arguments `use_fake` and `usb_port` are applied last, and win over both files.
 
 ```
 ros2 launch freezer_node freezer.launch.py params_file:=/path/to/robot.yaml
@@ -301,7 +301,7 @@ ros2 launch freezer_node freezer.launch.py params_file:=/path/to/robot.yaml
 | `baudrate` | `9600` | Speed of the serial port, the one of the firmware. |
 | `timeout` | `0.2` | Seconds to wait for one answer of the controller. |
 | `connect_delay` | `0.0` | Seconds to wait after opening the port, for a controller that resets when the port opens. The Nano R4 does not. |
-| `reconnect_period` | `2.0` | Seconds between two tries to connect while there is no controller: a Nano missing at start, or unplugged, is connected once it is plugged in. 0 tries once, at start. |
+| `reconnect_period` | `2.0` | Seconds between two tries to connect while there is no controller: a Nano missing at start, or unplugged, is connected once it is plugged in. 0 tries once, at start: a controller that stops answering later is then lost until the node restarts. |
 | `poll_period` | `0.01` | Seconds between two status queries during a shot. |
 | `end_margin` | `0.1` | Seconds after the duration of a shot before the node gives up on it. |
 | `watch_period` | `0.2` | Seconds between two status queries while no goal runs, to see the shots of the remote trigger. 0 stops the queries. |
@@ -323,19 +323,20 @@ Each sequence has a `recipe` and the parameters of that recipe, in milliseconds.
 
 **The upload to a Nano R4 fails with `Cannot open DFU device 2341:0074 found on devnum 2 (LIBUSB_ERROR_ACCESS)`.** Our user cannot write the USB device of the Nano R4. Install its udev rule, see [Access the Serial Port](#access-the-serial-port).
 
-**Every shot is rejected, and the log says `Every shot is rejected until it answers` or `The Freezer controller stopped answering`.** The Nano is unplugged, or the computer did not see it, as a Raspberry Pi sometimes does at boot. Plug it in again: the node tries to connect every `reconnect_period`, 2 s, and logs `The Freezer controller is back`, with no restart. `/freezer/status` tells the error of the last try.
+**Every shot is rejected, and the log says `Every shot is rejected until it answers` or `The Freezer controller stopped answering`.** The Nano is unplugged, or the computer did not see it, as a Raspberry Pi sometimes does at boot. Plug it in again: the node tries to connect every `reconnect_period`, 2 s, and logs `The Freezer controller is back`, with no restart. With `reconnect_period` 0, restart the node. `/freezer/status` tells the error of the last try.
 
 **`Permission denied` when opening `/dev/ttyACM0`.** Our user is not in the group `dialout`, or we have not logged in again since joining it. See [Access the Serial Port](#access-the-serial-port).
 
 ## How to run GitHub Actions locally
 
-At each push and pull request, the GitHub repository runs three workflows:
+At each push and pull request, the GitHub repository runs four workflows:
 
 | Workflow | What it does |
 |---|---|
 | [`industrial_ci.yml`](.github/workflows/industrial_ci.yml) | builds the packages and runs their tests with [Industrial CI](https://github.com/ros-industrial/industrial_ci), in a container with Ubuntu 24.04 and ROS2 Jazzy |
-| [`ci-format.yml`](.github/workflows/ci-format.yml) | runs the pre-commit hooks on every file, except the ament linters |
+| [`ci-format.yml`](.github/workflows/ci-format.yml) | runs the pre-commit hooks on every file, except the ament linters, then `bin/check-diagrams.sh` |
 | [`ci-ros-lint.yml`](.github/workflows/ci-ros-lint.yml) | runs `ament_copyright`, `ament_lint_cmake` and `ament_cpplint` on `freezer_driver`, `freezer_msgs` and `freezer_node` |
+| [`ci-web.yml`](.github/workflows/ci-web.yml) | type checks, tests and builds the board page, with Node.js and pnpm |
 
 `industrial_ci` builds `framed_serial` and `serial` from the repositories listed in [`freezer.repos`](freezer.repos), at the commits a local build uses. The firmware, `freezer_mcu`, is not built by CI.
 
@@ -351,7 +352,7 @@ On its first run `act` asks interactively which runner image to use and aborts i
 -P ubuntu-22.04=catthehacker/ubuntu:act-22.04
 ```
 
-Then run any of the three workflows from the root of the repository:
+Then run a workflow from the root of the repository, e.g. one of these three:
 
 ```
 ~/bin/act pull_request --workflows ./.github/workflows/ci-format.yml    -s GITHUB_TOKEN=""
@@ -368,4 +369,6 @@ To check the format and the linters without `act`, run the same commands inside 
 ```
 SKIP=ament_copyright,ament_lint_cmake,ament_cpplint pre-commit run --all-files --hook-stage manual
 ament_copyright src/freezer_driver src/freezer_msgs src/freezer_node
+ament_lint_cmake src/freezer_driver src/freezer_msgs src/freezer_node
+ament_cpplint --linelength=121 --filter=-whitespace/newline src/freezer_driver src/freezer_msgs src/freezer_node
 ```
