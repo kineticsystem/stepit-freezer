@@ -1,6 +1,6 @@
 # Remove the Recovery of Lost Replies
 
-Branch `remove-lost-reply-recovery`, on top of `usb-task-in-the-interrupt-only`.
+Pull request [#21](https://github.com/kineticsystem/stepit-freezer/pull/21), branch `remove-lost-reply-recovery`, on top of `usb-task-in-the-interrupt-only`.
 
 ## Goal
 

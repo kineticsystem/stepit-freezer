@@ -20,7 +20,7 @@ Fritzing 1.0 opens the design, made with Fritzing 0.5, and warns that some of it
 
 ## The Wiring
 
-Every output jack is the same: a stereo jack fed by two optocouplers, i.e. two lines, each closed against the sleeve. For jack k, bit 2(k-1) of the 16 outputs closes the shutter line, the tip, and bit 2(k-1)+1 the focus line, the ring. OUT8, which the default sequences use for the flash, is wired like the others: a flash sync is a single line, so a sequence closes both lines of a flash jack together, which fires it whether its cable uses the tip or the ring, and does nothing more with a mono plug, whose sleeve the ring touches.
+Every output jack is the same: a stereo jack fed by two optocouplers, i.e. two lines, each closed against the sleeve. For jack k, bit 2(k-1) of the 16 outputs closes the shutter line, the tip, and bit 2(k-1)+1 the focus line, the ring. OUT8, which the default sequence, `flash_shot`, uses for the flash, is wired like the others: a flash sync is a single line, so a sequence closes both lines of a flash jack together, which fires it whether its cable uses the tip or the ring, and does nothing more with a mono plug, whose sleeve the ring touches.
 
 The firmware writes `SH_CP`, `DS` and `ST_CP` straight to the port registers of the microcontroller, so it names the port bit of each pin as well as the pin:
 
