@@ -1,6 +1,6 @@
 # A Second Check of the Architecture, and the Review Again
 
-Branch `architecture-review`.
+Pull request [#24](https://github.com/kineticsystem/stepit-freezer/pull/24), branch `architecture-review`.
 
 ## Goal
 
