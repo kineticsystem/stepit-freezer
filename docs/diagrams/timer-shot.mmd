@@ -51,19 +51,19 @@ flowchart TB
     Arm("<b>Set the compare match</b><br/>for the end of step 0")
     ISR{{"<b>Compare-match interrupt</b>"}}
     Due("Is the end of<br/>the step due?")
-    Wait("<b>Wait for the next match</b>")
+    Wait("<b>Wait for the compare match</b>")
     Last("Last step?")
-    Latch("<b>Latch the shifted pattern</b><br/>record the lateness")
+    Latch("<b>Latch the shifted pattern</b><br/>the 16 outputs change together")
     Next("<b>Shift in the pattern after it</b><br/>set the next compare value")
     Done("<b>Stop the interrupt, idle</b><br/>the last step switched every output off")
 
     Shoot --> First
     First --> Arm
-    Arm --> ISR
+    Arm --> Due
     ISR --> Due
-    Due -- "no, a match of<br/>an earlier wrap" --> Wait
+    Due -- "no, not yet" --> Wait
     Wait -.-> ISR
-    Due -- "yes" --> Last
+    Due -- "yes: record<br/>the lateness" --> Last
     Last -- "no" --> Latch
     Latch ==> Next
     Next -.-> Due

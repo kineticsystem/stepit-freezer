@@ -24,6 +24,7 @@
   - [Sequence and the Recipes](#sequence-and-the-recipes)
   - [ShotRunner](#shotrunner)
   - [FreezerNode](#freezernode)
+  - [Threads](#threads)
 - [A Shot from the Host](#a-shot-from-the-host)
 - [Stopping a Shot](#stopping-a-shot)
 - [Losing the Controller](#losing-the-controller)
@@ -32,11 +33,12 @@
   - [The Board Page](#the-board-page)
 - [Safety Nets](#safety-nets)
 - [Tests](#tests)
+- [How to Extend StepIt Freezer](#how-to-extend-stepit-freezer)
 - [Design Decisions and Trade-offs](#design-decisions-and-trade-offs)
 
 ## Introduction
 
-This document explains how StepIt Freezer is built: the board, the protocol, the firmware of the Nano and the ROS2 side, what each part is responsible for, and why it is built that way. It describes the code as it is, firmware version 2.1.1 and protocol version 2. It assumes we have read the [README](../README.md). [Brainstorming.md](design/Brainstorming.md) keeps the ideas we weighed on the way, including the ones we dropped.
+This document explains how StepIt Freezer is built: the board, the protocol, the firmware of the Nano and the ROS2 side, what each part is responsible for, and why it is built that way. It describes the code as it is, firmware version 2.1.1 and protocol version 2. It assumes we have read the [README](../README.md). [Brainstorming.md](design/Brainstorming.md) keeps the ideas we weighed on the way, including the ones we dropped, and [Review.md](Review.md) judges the design described here.
 
 It follows one rule: **once a shot starts, its timing belongs to the controller, and only a stop interrupts it**. The host loads a table of steps, asks for a shot and is told at once that it has started; the Nano walks the table on a hardware timer, whatever else happens on the serial port; the host polls until the controller says the shot has ended.
 
@@ -59,23 +61,36 @@ The node's interface:
 | `~/status` | `freezer_msgs/msg/ControllerStatus` topic | Whether the controller is connected, and why not, when it changes and every second. |
 | `~/fake/press_trigger` | `std_srvs/srv/Trigger` service | With the fake controller only: press IN1. |
 | `use_fake`, `usb_port`, `timeout`, ... | parameters | The connection, the polling and the sequences, see the [README](../README.md#parameters). |
+| `params_file`, `use_fake`, `usb_port`, `web`, `web_port`, `web_dir`, `rosbridge_port` | launch arguments of [`freezer.launch.py`](../src/freezer_node/launch/freezer.launch.py) | `params_file` is a parameter file loaded after [`freezer.yaml`](../src/freezer_node/config/freezer.yaml); `use_fake` and `usb_port` are applied last and win over both files. `web:=false` starts neither the board page nor its rosbridge. |
+| 9092 | WebSocket, `rosbridge_port` | The rosbridge of the board page. |
+| 8092 | HTTP, `web_port` | The board page, built into `web/dist`. |
+| `usb_port`, `/dev/ttyACM0` by default | USB serial port | The controller, see [The Protocol](#the-protocol). |
+
+The node is named `freezer`, so `~/shoot` is `/freezer/shoot`.
 
 ## The Packages
 
-| Package | Role |
-|---|---|
-| `freezer_msgs` | The `Shoot` action, the `Step`, `Outputs` and `Shot` messages, and the `SetOutputs` service. No code. |
-| `freezer_driver` | The host side of the protocol, with no ROS interface: the `Driver` interface and its implementations, the sequence and its rules, the recipes, and `ShotRunner`. Its tests are in its `tests` folder. |
-| `freezer_node` | The node `freezer`, its parameters and its launch file, which also starts the board page and its rosbridge, and its test. |
-| `framed_serial`, `serial` | The framed serial protocol and the serial port, libraries pinned in `freezer.repos` and imported into `modules` by `bin/update.sh`. |
-| `freezer_mcu` | The firmware of the Nano, a PlatformIO project in `src/freezer_mcu`, not built by colcon. |
-| `web` | The board page, in React and TypeScript, built with Vite and pnpm by the scripts in `bin`, not by colcon. |
+| Package | Owns | Depends on | Must never |
+|---|---|---|---|
+| `freezer_msgs` | The `Shoot` action, the `Step`, `Outputs`, `Shot` and `ControllerStatus` messages, and the `SetOutputs` service. No code. | `builtin_interfaces`, `action_msgs` | |
+| `freezer_driver` | The host side of the protocol: the `Driver` interface and its implementations, the responses in `msgs`, the sequence and its rules, the recipes, and `ShotRunner`. Its tests are in its `tests` folder. | `framed_serial`; `rclcpp` for its logger only, in `default_driver.cpp` | Have a ROS interface, or know `freezer_msgs`: a shot must run and be tested with no node. |
+| `freezer_node` | The node `freezer`, its parameters, its test, and its launch file, which also starts the board page and its rosbridge. It chooses the driver, and builds the serial port of the real one. | `freezer_driver`, `freezer_msgs`, `framed_serial`, `rclcpp`, `rclcpp_action`, `std_srvs`; `rosbridge_server` when it runs | Encode a frame, or time a shot: it polls, the controller keeps the time. |
+| `framed_serial`, `serial` | The framed serial protocol and the serial port, libraries pinned in [`freezer.repos`](../freezer.repos) and imported into `modules` by `bin/update.sh`, and by CI. `framed-serial` is shared with StepIt Motors, at the same commit. | | |
+| `freezer_mcu` | The firmware of the Nano, a PlatformIO project in `src/freezer_mcu`, not built by colcon. | the Arduino core of the Nano R4, with its `FspTimer` and TinyUSB | Speak first: it only answers. |
+| `web` | The board page, in React and TypeScript, built with Vite and pnpm by the scripts in `bin`, not by colcon: `web/COLCON_IGNORE` hides it. | React; rosbridge when it runs | Keep the state of the board: it shows what the topics tell. |
 
-`freezer_driver` knows nothing of ROS, apart from its logger, so that a shot can run and be tested on a fake controller and a fake clock, with no node and no time passing.
+The includes follow the table:
+
+<!-- The source is diagrams/packages.mmd: change it, then run bin/render-diagrams.sh. -->
+<p align="center"><img src="diagrams/packages.svg" alt="The packages and their includes: freezer_node on freezer_msgs, freezer_driver, the ROS client libraries and framed_serial, whose port it builds; freezer_driver on framed_serial and, for its logger only, on rclcpp; framed_serial on serial. The board page reaches the node through rosbridge, and the serial port reaches the firmware over USB, both only when they run." width="520"></p>
+
+`freezer_driver` knows nothing of ROS, apart from its logger, so that a shot can run and be tested on a fake controller and a fake clock, with no node and no time passing. `freezer_node` includes `framed_serial` in one place, `create_driver()`, where it puts a `DefaultSerial` in a `DefaultFramedSerial` and hands it to the `DefaultDriver`.
+
+Nothing is shared at build time between the three sides of the wire, so some values are written twice and kept in step by hand: the command ids and the layouts, in `main.cpp` of the firmware and in `default_driver.cpp`; the limits, in `Sequencer.h` and in `FakeDriver::kLimits`, while the real driver reads them at the handshake; the bits of the jacks, in `recipes.cpp`, in `Step.msg` and in `board.ts` of the page; and the messages, which `freezer.ts` of the page declares again in TypeScript.
 
 ## The Board
 
-The firmware drives the shift registers on port D: `MR` on D2, `SH_CP` on D3, `DS` on D4, `OE` on D5 and `ST_CP` on D6. IN1 is on D7, pulled down by R2. The circuit, the PCB and the Gerber files of the board are in [docs/hardware](hardware/README.md); the pin labels of the circuit are wrong, and the PCB and the firmware agree.
+The firmware drives the shift registers on five pins, on port 1 of the RA4M1: `MR` on D2, `SH_CP` on D3, `DS` on D4, `OE` on D5 and `ST_CP` on D6. IN1 is on D7, pulled down by R2. The circuit, the PCB and the Gerber files of the board are in [docs/hardware](hardware/README.md); the pin labels of the circuit are wrong, and the PCB and the firmware agree.
 
 The 16 bits shift out least significant first, so bit 0 ends in the last stage of the chain. Each jack has two bits:
 
@@ -90,21 +105,21 @@ The latch is what makes a step precise: all 16 outputs change together on the ri
 
 ## The Protocol
 
-The host and the Nano speak the framed protocol of the `framed_serial` library: frames delimited by `0x7E`, escaped with `0x7D`, ending with a CRC-16, over the USB serial port of the Nano R4, which ignores the baud rate the host sets. The first byte of a request is the command id; the first byte of a response is `0x11` for success or `0x12` for an error, followed by a reason. Numbers are most significant byte first. It is strictly one request, one response: the controller never speaks first, so a frame the host did not ask for can never be mistaken for the answer to its next request.
+The host and the Nano speak the framed protocol of the `framed_serial` library: frames delimited by `0x7E`, escaped with `0x7D`, ending with a CRC-16, over the USB serial port of the Nano R4, which ignores the baud rate the host sets. The first byte of a request is the command id; the first byte of a response is `0x11` for success or `0x12` for an error, followed by a reason. Numbers are most significant byte first. It is strictly one request, one response: the controller never speaks first, so a frame the host did not ask for can never be mistaken for the answer to its next request. An answer that comes after the host stopped waiting for it, `timeout`, is the exception, see [Review.md](Review.md#the-serial-link).
 
 ### Commands
 
 | Id | Command | Request payload | Success payload |
 |---|---|---|---|
 | `0x76` | `Info` | none | version, limits and the name `FREEZER`, see [The Handshake](#the-handshake-and-the-version) |
-| `0x79` | `Echo` | anything | the same bytes |
+| `0x79` | `Echo` | anything | the same bytes; for a test by hand, `Driver` has no method for it |
 | `0x7B` | `LoadSequence` | step count, 1 byte; per step: type, 1 byte; outputs, 2 bytes; hold, 4 bytes in µs | duration, 4 bytes in µs |
 | `0x7C` | `Shoot` | none | shot id, 2 bytes; duration, 4 bytes in µs |
-| `0x75` | `Status` | none | state, 1 byte, 0 idle or 1 running; last shot id, 2 bytes; step, 1 byte; elapsed, 4 bytes in µs; worst lateness of the last shot, 4 bytes in µs |
+| `0x75` | `Status` | none | state, 1 byte, 0 idle or 1 running; last shot id, 2 bytes; step, 1 byte, and elapsed, 4 bytes in µs, both 0 when idle; worst lateness of the last shot, 4 bytes in µs, rounded up |
 | `0x77` | `SetOutputs` | outputs, 2 bytes | none |
 | `0x78` | `Stop` | none | none |
 
-- **A step** is a type, `0x00` "set and hold", the only one; the 16 outputs; and how long to hold them. 16 steps make a request of 114 bytes, under the 200 bytes of the receive buffer.
+- **A step** is a type, `0x00` "set and hold", the only one; the 16 outputs; and how long to hold them. 16 steps make a request of 114 bytes, 116 with its CRC, under the 200 bytes of the receive buffer.
 - **The shot id** counts from 1 after every reset, wraps back to 1 after `0xFFFF`, and is 0 when no shot has run since the reset. A shot fired by IN1 takes an id too.
 - **A shot is over** for the host when the state is idle and the last shot id is the one `Shoot` returned.
 
@@ -112,9 +127,9 @@ The host and the Nano speak the framed protocol of the `framed_serial` library: 
 
 | Reason | When |
 |---|---|
-| `0x01` malformed | an unknown command id, or a payload of the wrong length |
+| `0x01` malformed | an unknown command id, or a payload of the wrong length, e.g. a `LoadSequence` whose length does not match its step count |
 | `0x02` invalid table | the table breaks a rule of [What the Controller Rejects](#what-the-controller-rejects) |
-| `0x03` busy | `LoadSequence`, `Shoot` or `SetOutputs` while a shot runs |
+| `0x03` busy | `LoadSequence`, `Shoot` or `SetOutputs` while a shot runs; `LoadSequence` says so before it looks at the table |
 | `0x04` no table | `Shoot` before any table is loaded |
 
 ### The Handshake and the Version
@@ -132,7 +147,7 @@ The path of a serial port does not tell what is plugged in, so `DefaultDriver::c
 
 The driver accepts the controller only when the name is `FREEZER`, not another device on the wrong port, and its major version is the one the driver speaks, 2. The major version changes whenever the bytes on the wire change, so a driver never reads a controller it does not understand: flash the firmware of the same workspace. The node keeps the limits, and checks every table against them before sending it.
 
-**The controller starts again when the port opens.** The Nano R4 talks over its own USB, which a reset would drop, so its firmware starts again by itself when DTR rises: it stops a shot, switches every output off, forgets its table and its shot ids, and drops the bytes it had not sent, at once. It reads DTR with TinyUSB's `tud_cdc_connected()`, which only reads the line state: the core runs TinyUSB's `tud_task()` in the USB interrupt, and `tud_task()` is not reentrant, so `loop()` must never run it too, or a request or a reply is lost now and then. The driver waits `connect_delay` after opening the port, 0 by default, for a controller that resets when the port opens, then tries `Info` up to 5 times, 100 ms apart. The node keeps the port open as long as the controller answers, because every reopen restarts the controller, which forgets its table and switches its outputs off.
+**The controller starts again when the port opens.** The Nano R4 talks over its own USB, which a reset would drop, so its firmware starts again by itself when DTR rises: it stops a shot, switches every output off, forgets its table and its shot ids, and drops the bytes it had not sent, at once. It reads DTR with TinyUSB's `tud_cdc_connected()`, which only reads the line state: the core runs TinyUSB's `tud_task()` in the USB interrupt, and `tud_task()` is not reentrant, so `loop()` must never run it too, or a request or a reply is lost now and then. The driver waits `connect_delay` after opening the port, 0 by default, for a controller that resets when the port opens, then tries `Info` up to 5 times, 100 ms apart. Only a missing or unreadable answer is tried again: a wrong name or a wrong major version ends the handshake at once. The node keeps the port open as long as the controller answers, because every reopen restarts the controller, which forgets its table and switches its outputs off.
 
 ## The Controller
 
@@ -142,7 +157,7 @@ The firmware, in `src/freezer_mcu`, is plain Arduino code with three parts:
 |---|---|
 | `main.cpp` | The pins, the commands, the checks of a table, and the remote trigger. `loop()` serves the serial port and reads IN1. |
 | `Sequencer.cpp` | The loaded table and the shot: GPT1, its compare-match interrupt, and the direct port writes to the shift registers. |
-| `SerialPort.cpp`, `DataBuffer.cpp`, `CrcUtils.cpp` | The framed protocol, the firmware side of `framed_serial`. A 2-byte number is an `int16_t`: an `int` has 4 bytes on the Nano R4. |
+| `SerialPort.cpp`, `DataBuffer.cpp`, `Buffer.h`, `CrcUtils.cpp` | The framed protocol, the firmware side of `framed_serial`: a copy of the same files of the firmware of StepIt Motors, with two changes. A 2-byte number is an `int16_t`, since an `int` has 4 bytes on the Nano R4, and `SerialPort::reset()` drops a frame half read and the bytes not sent yet. `loop()` reads one byte and writes one byte at each turn. |
 
 [`platformio.ini`](../src/freezer_mcu/platformio.ini) has one environment, `nano_r4`. The firmware uses about 3 KB of the 32 KB of RAM of the Nano R4.
 
@@ -162,7 +177,7 @@ The firmware, in `src/freezer_mcu`, is plain Arduino code with three parts:
 | `Stop` | outputs off | outputs off | ends the shot, outputs off |
 | IN1 pressed | ignored | fires | ignored |
 
-The controller keeps no other state: there is no "armed" flag, no watchdog, and the table is not stored in the EEPROM. A reset, including the one when the port opens, brings it back to the first state.
+The controller keeps no other state: there is no "armed" flag, no watchdog, and the table is not stored in the EEPROM. A reset, or the restart when the port opens, brings it back to the first state.
 
 ### The Shot Owns the Outputs
 
@@ -173,12 +188,12 @@ Outside a shot, `SetOutputs` latches a pattern, e.g. lights on OUT8, `0xC000`, w
 GPT1, a 32-bit timer, counts ticks of 1/48 µs, on PCLKD at 48 MHz, and wraps after about 89 s. Its compare-match interrupt fires at the end of each step. A wrap does not matter: the time of a boundary is compared with the current time as a signed difference, which stays right as long as the shot lasts less than half a wrap, and a shot lasts at most 10 s. The Arduino core of the Nano R4 reserves GPT1 for the PWM of D3 and D11; the board drives D3 as a plain pin and leaves D11 free, so the firmware takes it. Its compare match has priority 2, above USB, 12, and `millis()`, 14: the host talking to the controller does not delay a boundary.
 
 <!-- The source is diagrams/timer-shot.mmd: change it, then run bin/render-diagrams.sh. -->
-<p align="center"><img src="diagrams/timer-shot.svg" alt="A shot on a hardware timer: the controller latches step 0, shifts in step 1 and sets the compare match; at each compare-match interrupt it checks whether the step is due, waits for the next match if not, latches the shifted pattern and shifts in the next one if it is, and stops the interrupt after the last step." width="785"></p>
+<p align="center"><img src="diagrams/timer-shot.svg" alt="A shot on a hardware timer: the controller latches step 0, shifts in step 1 and sets the compare match; then, and at each compare-match interrupt, it checks whether the end of the step is due, waits for the compare match if not, and if it is, records the lateness, latches the shifted pattern, shifts in the next one and checks again; after the last step it stops the interrupt." width="885"></p>
 
 - **Every step starts at its own time,** computed from the start of the shot, not from the end of the previous step: a late step does not delay the next ones.
 - **The interrupt only latches.** The next pattern is already in the shift stage, so the outputs change at the interrupt, within a few microseconds. Shifting the next pattern in, with direct port writes, takes the rest. A step must last at least 40 µs: the Nano 3 the board had before took about 27.5 µs per step, and fell behind on shorter ones. The Nano R4 is faster, but keeps the limit until it is measured there.
-- **The interrupt measures itself.** It records the worst lateness of the shot, how late a step boundary came after its time, which `Status` returns and the result of the action reports: 2 to 3 µs on our Nano R4, 16 steps of 40 µs included.
-- **`loop()` stays free.** The serial port is served during the shot, which is what lets the host poll and stop it. The UART and `millis()` interrupts can delay a step by a few microseconds, which does not add up from step to step, and is three orders of magnitude below the shutter lag of a camera.
+- **The interrupt measures itself.** It records the worst lateness of the shot, how late a step boundary came after its time, the end of the last step included, which `Status` returns and the result of the action reports: 2 to 3 µs on our Nano R4, 16 steps of 40 µs included.
+- **`loop()` stays free.** The serial port is served during the shot, which is what lets the host poll and stop it. USB and `millis()` rank below the compare match and cannot delay a step; a `Status` query can, by the few microseconds it disables interrupts for. Such a delay does not add up from step to step, and is three orders of magnitude below the shutter lag of a camera.
 - **Shared state is read atomically.** `Status` copies the state of the shot with interrupts disabled for a few microseconds, so that no step and time of different moments are read together.
 
 A step that is due before its compare match could be armed, e.g. a very short one, is handled by checking the time again after arming it, instead of waiting for the counter to wrap, 89 s later.
@@ -192,13 +207,14 @@ A generic table moves the responsibility for a safe shot from the firmware code 
 - **a type other than "set and hold".**
 - **a hold under 40 µs**, see above.
 - **a hold, or a total, over 10 s.**
-- **a payload whose length does not match its step count.**
+
+Each is answered "invalid table". A payload whose length does not match its step count is answered "malformed", and a table sent while a shot runs "busy", both before the table is read.
 
 A rejected table changes nothing: the previous table stays loaded, and the outputs do not move. The host checks the same rules first, with `validate()` and the limits of the handshake, so that a goal with a bad table is rejected before any serial traffic.
 
 ## The Remote Trigger
 
-IN1 fires the loaded table, exactly as `Shoot` would, unless a shot is running or no table is loaded. It is meant for testing, and it stays simple: no arming, no setting to disable it, nothing sent to the host. A shot it fires takes a shot id like any other, which `Status` returns, and a `Shoot` from the host meanwhile is answered busy. The node learns of it by polling, see [What the Node Tells](#what-the-node-tells).
+IN1 fires the loaded table, exactly as `Shoot` would, unless a shot is running or no table is loaded. It is meant for testing, and it stays simple: no arming, no setting to disable it, nothing sent to the host. A shot it fires takes a shot id like any other, which `Status` returns, and a `LoadSequence` or a `Shoot` from the host meanwhile is answered busy: the node accepts the goal, and aborts it with the message `a shot is running`. The node learns of it by polling, see [What the Node Tells](#what-the-node-tells).
 
 `loop()` reads IN1 at every turn. A button bounces when pressed and when released, so a level counts only once it has held for 20 ms, and only a press fires: holding the button fires once, and the bounces of the release, which come after the shot, fire nothing.
 
@@ -211,7 +227,7 @@ After the port opens, the controller has started again and holds no table, so IN
 
 ### Driver
 
-`Driver` is the controller as the host sees it: one method per command, each sending one request and returning its one response, with the status and, for an error, its reason. A shot runs on the controller by itself: `shoot()` returns as soon as it has started, and the caller polls `get_status()`.
+`Driver` is the controller as the host sees it: `connect()`, `disconnect()`, and one method per command, `Echo` excepted, each sending one request and returning its one response, with the status and, for an error, its reason. A shot runs on the controller by itself: `shoot()` returns as soon as it has started, and the caller polls `get_status()`.
 
 ### DefaultDriver
 
@@ -219,11 +235,11 @@ The real controller, over a `FramedSerial`. It encodes the requests, decodes the
 
 ### FakeDriver
 
-A controller in software, to run the node and test it without the board. It applies the rules of the firmware, runs a shot on a clock it is given, and records every pattern it latches, and when, in a timeline. Tests drive the clock by hand, so a shot of a second takes no time, and can make it fail in the ways that are hard to provoke on the board: a shot that never ends, a reset during a shot. `trigger()` presses IN1, and `set_plugged(false)` unplugs it: every call then throws, as on a port whose device is gone, until `set_plugged(true)` plugs it in again, afresh.
+A controller in software, to run the node and test it without the board. It applies the rules of the firmware, runs a shot on a clock it is given, and records every pattern it latches, and when, in a timeline. Tests drive the clock by hand, so a shot of a second takes no time, and can make it fail in the ways that are hard to provoke on the board: a shot that never ends, a reset during a shot. `trigger()` presses IN1, and `set_plugged(false)` unplugs it: every call then throws, as on a port whose device is gone, until `set_plugged(true)` plugs it in again, afresh. It has the limits of the firmware, `kLimits`, and answers the handshake as firmware 2.0.0.
 
 ### SynchronizedDriver
 
-The node calls the controller from two threads: the shot's thread polls it, and the services call it from the executor. `SynchronizedDriver` forwards each call to the driver it wraps, one at a time, so that a stop goes between two status queries, never in the middle of one, where it would mix the bytes of two frames on the port.
+The node calls the controller from three threads, see [Threads](#threads): the shot's thread polls it, the services and `watch()` call it from the executor, and a third connects. `SynchronizedDriver` forwards each call to the driver it wraps, one at a time, so that a stop goes between two status queries, never in the middle of one, where it would mix the bytes of two frames on the port. `with_driver()` runs a function on the wrapped driver under the same lock, which is how the node presses IN1 of a `FakeDriver`.
 
 ### Sequence and the Recipes
 
@@ -243,21 +259,31 @@ A raw table can still be sent, in the goal, for experiments.
 `ShotRunner` runs one shot on a driver, from loading its table to its end, with no ROS: time comes in as a clock and a sleep, so that a test runs a shot on the clock of a `FakeDriver`, instantly and exactly.
 
 - **It loads only what changed.** The controller does not say which table it holds, so the runner remembers the sequence it loaded last, and loads a sequence only when it differs. It forgets it whenever the controller may have lost it.
-- **It polls for the end.** It sleeps `poll_period`, 10 ms, between two status queries, reports the step and the elapsed time at each, and succeeds when the controller is idle with the shot's id.
+- **It polls for the end.** It sleeps `poll_period`, 10 ms, between two status queries, reports the step and the elapsed time at each, and succeeds when the controller is idle with the shot's id. A query that fails, e.g. on a timeout, ends the run as aborted, while the shot goes on in the controller.
 - **It gives up on a shot that does not end** within its duration plus `end_margin`, 100 ms.
 - **Callbacks** let its caller cancel the shot before it is fired, and learn when it has started and how it progresses.
 
 ### FreezerNode
 
-The node checks a goal, then runs it on a thread of its own with a `ShotRunner`, turning the runner's callbacks into feedback, `LOADING` then `RUNNING` with the step and the elapsed time, and its result into the result of the goal. One goal runs at a time: a goal is rejected while another runs, when no controller is connected, or when its table breaks a rule of the limits, with no serial traffic. A goal can be canceled while its table loads, never once the shot has started.
+The node checks a goal, then runs it on a thread of its own with a `ShotRunner`, turning the runner's callbacks into feedback, `LOADING` then `RUNNING` with the step and the elapsed time, and its result into the result of the goal. One goal runs at a time: a goal is rejected while another runs, when no controller is connected, when it names an unknown sequence, or when its table breaks a rule of the limits, with no serial traffic. A rejection carries no reason in ROS2, so the reason goes to the log of the node. A goal can be canceled while its table loads, never once the shot has started.
 
 While no goal runs, a timer queries the controller's status every `watch_period`, to see the shots of the remote trigger, and the node tells every shot and every change of the outputs on its topics, see [Seeing the Board](#seeing-the-board).
 
 The controller can come and go, see [Losing the Controller](#losing-the-controller): while there is none, a thread of the node tries to connect every `reconnect_period`, and the node refuses every goal and every service meanwhile.
 
+### Threads
+
+| Thread | Runs | How it meets the others |
+|---|---|---|
+| The executor, `rclcpp::spin()` in `main.cpp`, single-threaded | The callbacks of the action, which accept or reject a goal and a cancel; the services; `watch()`; the status every second. | It sets `busy_`, an atomic, when it accepts a goal, and the requests to cancel and to stop under `start_mutex_`. |
+| The shot's thread, `worker_`, one per goal | `execute()`: the `ShotRunner`, the feedback, the result, and the shot on `~/shots` and `~/outputs`. | It reads the requests under `start_mutex_` and clears `busy_` last. The executor joins it when it accepts the next goal, and the destructor at the end, which therefore waits for a running shot. |
+| The reconnector, `reconnector_`, when `reconnect_period` is not 0 | `reconnect_loop()`: `connect()` while `connected_`, an atomic, is false. | It writes the limits under `limits_mutex_` and the status under `status_mutex_`; the destructor wakes it through a condition variable, and joins it. |
+
+Every call to the controller, from any of them, goes through the mutex of `SynchronizedDriver`. The firmware has no thread: `loop()`, and the compare-match interrupt, which shares the state of the shot with it under `InterruptLock`, a scope with interrupts disabled.
+
 ## A Shot from the Host
 
-First the node checks the goal, loads the table when it is not the one loaded last, and starts the shot:
+This is the longest flow, from a goal to its result, in two diagrams. First the node checks the goal, loads the table when it is not the one loaded last, and starts the shot:
 
 <!-- The source is diagrams/shot-start.mmd: change it, then run bin/render-diagrams.sh. -->
 <p align="center"><img src="diagrams/shot-start.svg" alt="The client sends a goal; FreezerNode builds the table and checks the limits, accepts the goal, loads the table into the Nano firmware when another table is loaded, sends Shoot, and reports the shot as running." width="608"></p>
@@ -277,7 +303,7 @@ The host learns the end of a shot late, by up to one polling period plus a statu
 - **Before the shot,** while its table loads, the node does not fire it, and the goal aborts with `Stopped before the shot started.`.
 - **Between the two,** a stop that comes after the node decided to fire, and before `Shoot` reached the controller, found nothing to stop: the node sends `Stop` again as soon as the shot has started.
 
-A stop with no goal running only switches the outputs off. A goal sent after the stop runs normally.
+A stop with no goal running switches the outputs off, and ends a shot of IN1 if one runs, which `~/shots` then tells as stopped. A goal sent after the stop runs normally.
 
 ## Losing the Controller
 
@@ -288,7 +314,7 @@ The controller resets when its power or its USB connection drops, and starts aga
 
 A controller that never answers makes every call throw after `timeout`, and a shot that never ends aborts at its deadline.
 
-**A controller unplugged is let go, and connected again when it is back.** While no goal runs, three status queries of `watch()` that fail in a row, 0.6 s, close the port: a Nano unplugged makes them all fail, a single failure on noise does not. A shot running when it goes fails as above, and the next queries close the port. Then, as when the Nano is missing at start, a thread of the node tries to connect every `reconnect_period`, 2 s: opening the port fails at once while the Nano is away, and the handshake succeeds once it is back. The controller starts again when its port opens, so the node tells every output off, and `watch()` sees its shot ids start again. The first failure goes to the log, not every try that follows. The thread connects apart from the executor, because a handshake can take up to half a second, `connect_delay` and the tries of `Info`, and the services must answer meanwhile. A Nano that was not seen, e.g. at boot, only needs to be plugged in again: nothing needs a restart. `reconnect_period` 0 tries once, at start, and never lets the controller go.
+**A controller unplugged is let go, and connected again when it is back.** While no goal runs, three status queries of `watch()` that fail in a row, 0.6 s, close the port: a Nano unplugged makes them all fail, a single failure on noise does not. A shot running when it goes fails as above, and the next queries close the port. Then, as when the Nano is missing at start, a thread of the node tries to connect every `reconnect_period`, 2 s: opening the port fails at once while the Nano is away, and the handshake succeeds once it is back. The controller starts again when its port opens, so the node tells every output off, and `watch()` sees its shot ids start again. The first failure goes to the log, not every try that follows. The thread connects apart from the executor, because a handshake with a device that stays silent takes about 1.5 s, five tries of `Info` that each wait `timeout`, 0.2 s, and 100 ms more, after `connect_delay`, and the services must answer meanwhile. Only the first try, in the constructor of the node, makes its caller wait. A Nano that was not seen, e.g. at boot, only needs to be plugged in again: nothing needs a restart. `reconnect_period` 0 tries once, at start, and starts no such thread: a controller that `watch()` lets go is then gone until the node restarts. `watch_period` 0 stops `watch()`, and with it both the shots of IN1 and the letting go.
 
 ## Seeing the Board
 
@@ -296,10 +322,10 @@ A controller that never answers makes every call throw after `timeout`, and a sh
 
 Two topics tell what the board does. Each keeps its last message for a client that subscribes late (transient local), and only its last: rosbridge passes a new client the first message a topic kept, so with more, a page would open on the oldest.
 
-- **`~/outputs`** is the pattern of the outputs whenever the node knows it changed: what `set_outputs` latched, all off after a stop and after a shot, and each step of a shot as the controller reports it when polled. A step shorter than the polling period may therefore never be published: this topic is for showing the board live, not for timing.
+- **`~/outputs`** is the pattern of the outputs whenever the node knows it changed: what `set_outputs` latched, all off after a stop, after a shot, after each connection and at the start when no controller answers, and each step of a shot as the controller reports it when polled. After a shot that failed, the node does not know the outputs and publishes nothing. A step shorter than the polling period may therefore never be published: this topic is for showing the board live, not for timing.
 - **`~/shots`** tells each shot when it starts, with its table and the host time at which the controller confirmed its start, and when it ends, with how long it ran and its worst lateness, when it was stopped, or when it failed. The table and the start give the time of every step boundary to the microsecond, since the controller runs the table exactly; the time at which a message reaches a client gives it only to a few milliseconds.
 
-**`~/status`** tells whether the node talks to the controller, with the serial port, or `fake`, and why not, e.g. `No Freezer controller.` or `The Freezer controller stopped answering: ...`. It is published when it changes, and again every second: a client that stops receiving it knows that the node is gone, which a latched message alone cannot tell, since it stays on a page after its node died. StepIt Macro shows it as an icon of its page.
+**`~/status`** tells whether the node talks to the controller, with the serial port, or `fake`, and why not: `Not connected yet.`, `No Freezer controller.`, `Cannot connect to the Freezer controller: ...` or `The Freezer controller stopped answering: ...`. It is published when it changes, and again every second: a client that stops receiving it knows that the node is gone, which a latched message alone cannot tell, since it stays on a page after its node died. StepIt Macro shows it as an icon of its page.
 
 The node only talks to the controller during its own shots, so it would never see one fired by IN1. While no goal runs, it queries the status every `watch_period`, 200 ms by default. A new shot id is a shot of the trigger: it runs the table the node loaded last, and the time the status says it has run gives its start. The node follows it to its end at the same period, and tells it on both topics, as `SOURCE_TRIGGER`. A shot shorter than the period is seen only once it ended, with its start estimated from its duration. A status taken while a goal starts is dropped, so that the goal's own shot is never taken for the trigger's.
 
@@ -307,7 +333,7 @@ With the fake controller, `~/fake/press_trigger` presses IN1 of the `FakeDriver`
 
 ### The Board Page
 
-The board page, in `web`, fires the commands and draws the timing of each shot. It reaches the node through rosbridge, a WebSocket that speaks JSON, so that the browser needs no ROS: the launch file starts a rosbridge of its own, on port 9092, since a rosbridge only knows the messages installed next to it, and serves the built page with Python's HTTP server, on port 8092.
+The board page, in `web`, fires the commands and draws the timing of each shot. It reaches the node through rosbridge, a WebSocket that speaks JSON, so that the browser needs no ROS: the launch file starts a rosbridge of its own, on port 9092, since a rosbridge only knows the messages installed next to it, and serves the built page with Python's HTTP server, on port 8092, when `web/dist` holds one. The page looks for rosbridge on port 9092 of the host that served it; another address typed in its top bar is kept in the `localStorage` of the browser, the only thing the page keeps.
 
 <!-- The source is diagrams/board-page.mmd: change it, then run bin/render-diagrams.sh. -->
 <p align="center"><img src="diagrams/board-page.svg" alt="The board page: its commands and its timing diagram of the shots use the Freezer store, which talks through a Rosbridge WebSocket client to rosbridge and on to freezer_node." width="417"></p>
@@ -315,12 +341,12 @@ The board page, in `web`, fires the commands and draws the timing of each shot. 
 | File | Role |
 |---|---|
 | `src/ros/rosbridge.ts` | The connection: topics, service calls and action goals over the rosbridge protocol. It reconnects by itself, and subscribes again after a reconnection. |
-| `src/freezer/freezer.ts` | The node as the page sees it: a store of the outputs, from `~/outputs`, and of the last shots, from `~/shots`, and one method per command. It reads the parameter `use_fake` to tell whether `~/fake/press_trigger` exists, since the page has no rosapi to list the services. React reads it with `useSyncExternalStore`. |
+| `src/freezer/freezer.ts`, `useFreezer.ts` | The node as the page sees it, `/freezer`: a store of the outputs, from `~/outputs`, and of the last 10 shots, from `~/shots`, and one method per command. It reads the parameters of the node through `~/get_parameters`: `default_sequence` and `sequence_names` for its menu, and `use_fake` to tell whether `~/fake/press_trigger` exists, since the page has no rosapi to list the services. React reads it with `useSyncExternalStore`, in the hook `useFreezer`. |
 | `src/freezer/board.ts` | The 16 lines and their bits, the rows of the timing diagram. |
 | `src/freezer/timeline.ts` | When each line is on during a shot, from its table: the spans, the step at a time, the ticks of the axis. |
 | `src/components` | The commands, and the timing diagram: a row per line, with its LED lit as `~/outputs` tells it, and the trace of the latest shot. |
 
-The timing diagram is plain SVG: a row per line, high while it is closed, as a logic analyser draws it. The rows are named after the contacts of the plug, e.g. `OUT1 ring` and `OUT1 tip`, not after a device: the jacks are all alike, and only the sequence decides that one drives a camera, whose ring is its focus and tip its shutter, and another a flash. It draws the shot from its table, so it shows what the controller was told to do, to the microsecond, not a measurement of what it did; the worst lateness, which the controller measures, is in the result of the action and on `~/shots`. A running shot has a cursor, which advances on the page's own clock from the moment its start arrived, so that a host on another clock does not move it. A stopped shot is cut where it stopped. A shot whose end never reaches the page, e.g. after a lost connection, counts as running for its duration and 2 s more, `END_GRACE_MS`, and then no more: the page disables the commands while a shot runs, and must not keep them disabled forever.
+The timing diagram is plain SVG: a row per line, high while it is closed, as a logic analyser draws it. The rows are named after the contacts of the plug, e.g. `OUT1 ring` and `OUT1 tip`, not after a device: the jacks are all alike, and only the sequence decides that one drives a camera, whose ring is its focus and tip its shutter, and another a flash. It draws the shot from its table, so it shows what the controller was told to do, to the microsecond, not a measurement of what it did; the worst lateness, which the controller measures, is in the result of the action and on `~/shots`. A running shot has a cursor, which advances on the page's own clock from the moment its start arrived, so that a host on another clock does not move it. A stopped shot is cut where it stopped. A shot whose end never reaches the page, e.g. after a lost connection, counts as running for its duration and 2 s more, `END_GRACE_MS`, and then no more: the page disables Send, All on and All off while a shot runs, and must not keep them disabled forever. Stop stays enabled.
 
 ## Safety Nets
 
@@ -342,18 +368,46 @@ What is deliberately not there:
 
 The tests run without the board: `DefaultDriver` against a mock of `FramedSerial`, everything else against `FakeDriver`.
 
-| Test | What it covers |
+| Test | Cases | What it covers |
+|---|---|---|
+| [`test_default_driver`](../src/freezer_driver/tests/test_default_driver.cpp) | 16 | The frames each command sends and how each response is read, the handshake, its retries and its refusals, the errors. |
+| [`test_fake_driver`](../src/freezer_driver/tests/test_fake_driver.cpp) | 17 | The fake runs a table, records its timeline, owns the outputs during a shot, stops, fires from IN1, fails when told to, and answers nothing while unplugged. |
+| [`test_sequence`](../src/freezer_driver/tests/test_sequence.cpp) | 8 | The encoding of a table and the rules of the controller. |
+| [`test_recipes`](../src/freezer_driver/tests/test_recipes.cpp) | 5 | Each recipe produces the expected table, and the jack to bit mapping. |
+| [`test_shot_runner`](../src/freezer_driver/tests/test_shot_runner.cpp) | 10 | A shot from load to end on a clock the test moves: the callbacks, a table loaded once, a cancel, a refused table, a shot that never ends, a reset during and between shots. |
+| [`test_freezer_node`](../src/freezer_node/tests/test_freezer_node.cpp) | 22 | The ROS2 interface end to end: the action, its rejections, the services, a stop during a shot, a goal during a shot of IN1, the topics, the shots of the trigger the node sees while idle, and a controller missing at start or unplugged, connected again once it is back. |
+| [`web/tests`](../web/tests) | 29 | The board page, with vitest: the bits of the board, the timeline of a shot, how the shot messages make the list of shots, and the rosbridge client against a fake WebSocket. |
+
+Run them in the container; the first command also checks the types of the page and that every diagram is rendered from its source:
+
+```bash
+./bin/test.sh
+colcon test --packages-select freezer_driver --return-code-on-test-failure
+```
+
+In CI, `industrial_ci.yml` runs the tests of the ROS packages, and the `Web` workflow those of the page.
+
+What has no automated test:
+
+- **The node on the real serial chain.** `test_freezer_node` gives the node a `FakeDriver`, so `create_driver()`, `DefaultFramedSerial` and `DefaultSerial` under a `DefaultDriver` run only with the board.
+- **The launch file**, the rosbridge and the HTTP server it starts, and the components of the page in a browser: start the launch file and open the page.
+- **A cancel of a goal through the action.** `test_shot_runner` cancels through the callback of the runner; no test sends a cancel request to the node.
+- **The firmware.** The timing, the microseconds between latches, needs the board and a logic analyser or an oscilloscope on `ST_CP`; the rest, the commands, the states and IN1, is checked by hand on the Nano. On the Nano R4, a script checked every command and error, the minimum steps, `Stop`, the busy refusals, a 2 s shot against the clock of the Raspberry Pi, 2006 ms, and the restart when the port opens; the `timed_light` shot of StepIt Macro fired its camera and its lights.
+
+## How to Extend StepIt Freezer
+
+| To... | Change... |
 |---|---|
-| `test_default_driver` | The frames each command sends and how each response is read, the handshake, its retries and its refusals, the errors. |
-| `test_fake_driver` | The fake runs a table, records its timeline, owns the outputs during a shot, stops, fires from IN1, fails when told to, and answers nothing while unplugged. |
-| `test_sequence` | The encoding of a table and the rules of the controller. |
-| `test_recipes` | Each recipe produces the expected table, and the jack to bit mapping. |
-| `test_shot_runner` | A shot from load to end on a clock the test moves: the callbacks, a table loaded once, a cancel, a refused table, a shot that never ends, a reset during and between shots. |
-| `test_freezer_node` | The ROS2 interface end to end: the action, its rejections, the services, a stop during a shot, a goal during a shot of IN1, the topics, the shots of the trigger the node sees while idle, and a controller missing at start or unplugged, connected again once it is back. |
-
-The board page has tests of its own, with vitest, run by `bin/test.sh` and by the `Web` workflow of CI: the bits of the board, the timeline of a shot, how the shot messages make the list of shots, and the rosbridge client against a fake WebSocket.
-
-The firmware has no automated test. The timing, the microseconds between latches, needs the board and a logic analyser or an oscilloscope on `ST_CP`; the rest, the commands, the states and IN1, is checked by hand on the Nano. On the Nano R4, a script checked every command and error, the minimum steps, `Stop`, the busy refusals, a 2 s shot against the clock of the Raspberry Pi, 2006 ms, and the restart when the port opens; the `timed_light` shot of StepIt Macro fired its camera and its lights.
+| add a sequence | its name in `sequence_names` and its block under `sequences`, in a parameter file given as `params_file`. No code. |
+| add a recipe | a struct with `build()` in `recipes.hpp` and `recipes.cpp`; its name, its parameters in `declare_sequence_parameters()` and its branch in `build_sequence()`, in `freezer_node.cpp`; a case in `test_recipes`; the tables of recipes here and in the README. |
+| add a command | its id and its handler in `main.cpp`, called from `processBuffer()`; a method in `Driver`, `DefaultDriver`, `FakeDriver` and `SynchronizedDriver`; a response class in `freezer_driver/msgs` if it answers more than a status; a frame test in `test_default_driver`. Bump `VERSION_MAJOR` and `kExpectedProtocolVersion` together, only if an existing layout changes. |
+| change a limit of a table | `MAX_STEPS`, `MIN_HOLD_US` or `MAX_DURATION_US` in `Sequencer.h`, and `FakeDriver::kLimits`; the real driver reads them at the handshake. A step takes 7 bytes of the 200 of the buffers of `main.cpp`, so more than 28 steps need larger ones. |
+| add a kind of step | `Step::Type` in `sequence.hpp`, its constant in `Step.msg`, the check in `validate()` and in `loadSequenceCommand()`, and its handling in `Sequencer.cpp` and in `FakeDriver`. It changes what the bytes mean: bump the major version on both sides. |
+| add a topic, or a field to a message | the file in `freezer_msgs` and its `CMakeLists.txt`; the node; the copy of the message in `web/src/freezer/freezer.ts`; the interface table here and in the README. |
+| make the fake fail in a new way | a value of `FakeDriver::Failure`, and where the fake acts on it. |
+| change the board page | `web/src`, with its test in `web/tests`; `bin/build.sh` builds it into `web/dist`, and `pnpm run dev` in `web` serves it with hot reload on port 5175, where the page does not connect today ([Review.md](Review.md)): check a change on the built page. |
+| add a ROS package | its folder in `src`, and its name in the list of `ci-ros-lint.yml` and in the paths of the ament hooks of `.pre-commit-config.yaml`. |
+| add or change a diagram | `docs/diagrams/<name>.mmd`, then `bin/render-diagrams.sh` outside the container; commit the source and its SVG. |
 
 ## Design Decisions and Trade-offs
 
