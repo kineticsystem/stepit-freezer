@@ -13,7 +13,7 @@ Each pull request has a notes file here, from #16 on; #20, closed without a merg
 | [021-remove-lost-reply-recovery.md](021-remove-lost-reply-recovery.md) | [#21](https://github.com/kineticsystem/stepit-freezer/pull/21) Remove the recovery of lost replies |
 | [023-ros2-workspace.md](023-ros2-workspace.md) | [#23](https://github.com/kineticsystem/stepit-freezer/pull/23) Libraries from `freezer.repos`, not submodules |
 | [024-architecture-review.md](024-architecture-review.md) | [#24](https://github.com/kineticsystem/stepit-freezer/pull/24) A second check of the architecture, and the review again |
-| [readme-fixes.md](readme-fixes.md) | The READMEs, checked against the code |
+| [025-readme-fixes.md](025-readme-fixes.md) | [#25](https://github.com/kineticsystem/stepit-freezer/pull/25) The READMEs, checked against the code |
 
 ## How to Write One
 
