@@ -1,0 +1,85 @@
+---
+config:
+  theme: base
+  fontFamily: "Arial, Helvetica, sans-serif"
+  flowchart:
+    curve: basis
+    padding: 12
+    nodeSpacing: 46
+    rankSpacing: 32
+    subGraphTitleMargin:
+      top: 4
+      bottom: 10
+  class:
+    padding: 10
+  themeVariables:
+    lineColor: "#94a3b8"
+    textColor: "#64748b"
+    primaryColor: "#f1f5f9"
+    primaryBorderColor: "#64748b"
+    primaryTextColor: "#0f172a"
+    secondaryColor: "#f1f5f9"
+    secondaryBorderColor: "#64748b"
+    secondaryTextColor: "#0f172a"
+    tertiaryColor: "#f1f5f9"
+    tertiaryBorderColor: "#64748b"
+    tertiaryTextColor: "#0f172a"
+    mainBkg: "#f1f5f9"
+    nodeBorder: "#64748b"
+    nodeTextColor: "#0f172a"
+    classText: "#0f172a"
+    clusterBkg: "transparent"
+    clusterBorder: "#94a3b8"
+    titleColor: "#64748b"
+    edgeLabelBackground: "#ffffff"
+  themeCSS: >
+    svg, .label, .nodeLabel, .edgeLabel, foreignObject div { font-family: Arial, Helvetica, sans-serif; }
+    .node rect, .node polygon, .node path {
+      filter: drop-shadow(0 3px 6px rgba(15, 23, 42, 0.18));
+    }
+    .node rect { rx: 14px; ry: 14px; }
+    .cluster rect { rx: 18px; ry: 18px; }
+    .edgeLabel, .edgeLabel p, .edgeLabel span {
+      background: #ffffff; color: #475569; border-radius: 999px;
+    }
+    .edgeLabel p { padding: 3px 10px; }
+    .labelBkg { background: transparent !important; fill: none !important; }
+---
+flowchart TB
+    Web(["<b>web</b><br/>the board page"])
+    Node{{"<b>freezer_node</b>"}}
+    Msgs("<b>freezer_msgs</b>")
+    Driver("<b>freezer_driver</b>")
+    Ros("<b>rclcpp, rclcpp_action,</b><br/><b>std_srvs</b>")
+    Framed("<b>framed_serial</b>")
+    Serial("<b>serial</b>")
+    Mcu("<b>freezer_mcu</b><br/>the firmware")
+
+    Node --> Msgs
+    Node --> Driver
+    Node --> Ros
+    Node -- "builds the port" --> Framed
+    Driver --> Framed
+    Driver -- "the logger only" --> Ros
+    Framed --> Serial
+    Web -. "rosbridge,<br/>when it runs" .-> Node
+    Serial -. "the protocol,<br/>over USB" .-> Mcu
+
+    classDef human fill:#ffe4e6,stroke:#e11d48,stroke-width:2px,color:#881337
+    classDef voice fill:#ccfbf1,stroke:#0d9488,stroke-width:2px,color:#134e4a
+    classDef mind  fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#4c1d95
+    classDef brain fill:#7c3aed,stroke:#5b21b6,stroke-width:2px,color:#ffffff
+    classDef robot fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f
+    classDef data  fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e3a8a
+    classDef ext   fill:#f1f5f9,stroke:#64748b,stroke-width:2px,color:#0f172a
+
+    class Web human
+    class Node brain
+    class Msgs,Driver mind
+    class Framed,Serial voice
+    class Ros ext
+    class Mcu robot
+
+    linkStyle 0,1,2,3,4,6 stroke:#8b5cf6,stroke-width:2px
+    linkStyle 5 stroke:#e11d48,stroke-width:2px
+    linkStyle 7,8 stroke:#94a3b8,stroke-width:2px
